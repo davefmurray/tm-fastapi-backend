@@ -169,3 +169,51 @@ async def get_customer_vehicles(customer_id: int):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/{customer_id}")
+async def update_customer(customer_id: int, customer_data: dict):
+    """
+    Update existing customer
+
+    - **customer_id**: Customer ID
+    - **customer_data**: Complete customer object with updates
+    """
+    tm = get_tm_client()
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
+
+    # Ensure IDs are set
+    customer_data["id"] = customer_id
+    customer_data["shopId"] = int(shop_id)
+
+    try:
+        result = await tm.put(f"/api/shop/{shop_id}/customer/{customer_id}", customer_data)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/vehicles/{vehicle_id}")
+async def update_vehicle(vehicle_id: int, vehicle_data: dict):
+    """
+    Update existing vehicle
+
+    - **vehicle_id**: Vehicle ID
+    - **vehicle_data**: Complete vehicle object with updates
+    """
+    tm = get_tm_client()
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
+
+    # Ensure ID is set
+    vehicle_data["id"] = vehicle_id
+
+    try:
+        result = await tm.put(
+            f"/api/shop/{shop_id}/customer/vehicle/{vehicle_id}?checkForDuplicateVehicle=false",
+            vehicle_data
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
