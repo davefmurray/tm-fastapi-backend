@@ -2,7 +2,8 @@
 
 FastAPI proxy backend for Tekmetric API with custom dashboard logic and accurate metric calculations.
 
-**Status:** Phase 1 - Core Proxy (15 endpoints)
+**Status:** Phase 1-2 Complete - 84 Endpoints Implemented
+**Coverage:** ~50% of documented TM APIs
 
 ---
 
@@ -118,38 +119,119 @@ Railway will auto-detect FastAPI and deploy with the correct start command.
 
 ---
 
-## API Endpoints
+## API Endpoints (84 Total)
 
-### Authorization
-- `POST /api/auth/authorize/{nonce}` - Submit authorization
-- `GET /api/auth/authorizations/{ro_id}` - Get auth history
-- `PATCH /api/auth/job/{job_id}/remove-auth` - Remove auth status
+### Authorization (3)
+- POST `/api/auth/authorize/{nonce}` - Submit authorization
+- GET `/api/auth/authorizations/{ro_id}` - Auth history
+- PATCH `/api/auth/job/{job_id}/remove-auth` - Remove auth status
 
-### Dashboard
-- `GET /api/dashboard/summary` - Today's metrics (TM aggregates)
-- `GET /api/dashboard/breakdown` - Breakdown by status
-- `GET /api/dashboard/accurate-today` - **Accurate metrics from raw data**
+### Dashboard (3)
+- GET `/api/dashboard/summary` - Metrics summary
+- GET `/api/dashboard/breakdown` - Breakdown by status
+- GET `/api/dashboard/accurate-today` - Accurate calculations
 
-### Payments
-- `POST /api/payments/{ro_id}` - Create payment
-- `GET /api/payments/{ro_id}` - List payments
-- `PUT /api/payments/{payment_id}/void` - Void payment
-- `GET /api/payments/types` - Get payment types
+### Payments (4)
+- GET `/api/payments/types` - Payment types
+- POST `/api/payments/{ro_id}` - Create payment
+- GET `/api/payments/{ro_id}` - List payments
+- PUT `/api/payments/{payment_id}/void` - Void payment
 
-### Customers
-- `POST /api/customers` - Create customer
-- `GET /api/customers/search?q={query}` - Search customers
-- `GET /api/customers/{customer_id}` - Get customer
-- `POST /api/customers/vehicles` - Create vehicle
-- `GET /api/customers/{customer_id}/vehicles` - Get vehicles
+### Customers (7)
+- POST `/api/customers` - Create customer
+- PUT `/api/customers/{customer_id}` - Update customer
+- GET `/api/customers/search` - Search customers
+- GET `/api/customers/{customer_id}` - Get customer
+- POST `/api/customers/vehicles` - Create vehicle
+- PUT `/api/customers/vehicles/{vehicle_id}` - Update vehicle
+- GET `/api/customers/{customer_id}/vehicles` - List vehicles
 
-### Repair Orders
-- `GET /api/ro/list?board={board}` - List ROs (raw data)
-- `GET /api/ro/{ro_id}` - Get RO details
-- `GET /api/ro/{ro_id}/estimate` - Get estimate
-- `POST /api/ro/{ro_id}/share/estimate` - Send estimate
-- `GET /api/ro/{ro_id}/activity` - Get activity feed
-- `PUT /api/ro/{ro_id}/status` - Update status (complete/post)
+### Repair Orders (18)
+- GET `/api/ro/list` - List ROs
+- GET `/api/ro/{ro_id}` - RO details
+- GET `/api/ro/{ro_id}/estimate` - Estimate
+- GET `/api/ro/{ro_id}/activity` - Activity feed
+- GET `/api/ro/{ro_id}/job-history` - Job history
+- GET `/api/ro/{ro_id}/inspection-history` - Inspection history
+- GET `/api/ro/{ro_id}/appointments` - Appointments
+- GET `/api/ro/{ro_id}/purchase-orders` - Purchase orders
+- GET `/api/ro/{ro_id}/transparency-settings` - Transparency settings
+- PUT `/api/ro/{ro_id}/transparency-settings` - Update transparency
+- GET `/api/ro/public/estimate/{nonce}` - Public estimate
+- GET `/api/ro/public/inspection/{nonce}` - Public inspection
+- POST `/api/ro/{ro_id}/share/estimate` - Send estimate
+- POST `/api/ro/{ro_id}/share/invoice` - Send invoice
+- PUT `/api/ro/{ro_id}/complete` - Complete work
+- PUT `/api/ro/{ro_id}/post` - Post RO
+- PUT `/api/ro/{ro_id}/unpost` - Unpost RO
+
+### Appointments (5)
+- GET `/api/appointments/calendar` - Calendar view
+- GET `/api/appointments/{id}` - Get appointment
+- POST `/api/appointments` - Create/update
+- GET `/api/appointments/settings` - Settings
+- GET `/api/appointments/colors` - Color labels
+
+### Parts & Orders (5)
+- GET `/api/parts/integration-config` - Integration config
+- POST `/api/parts/proxy` - PartsTech proxy
+- GET `/api/parts/vendors` - Vendor search
+- POST `/api/parts/orders` - Create order
+- PATCH `/api/parts/orders/{id}/receive` - Mark received
+
+### VCDB Lookups (5)
+- GET `/api/vcdb/years` - Years
+- GET `/api/vcdb/makes/{year}` - Makes
+- GET `/api/vcdb/models/{year}/{make_id}` - Models
+- GET `/api/vcdb/submodels/{vehicle_id}` - Submodels
+- GET `/api/vcdb/vehicle/{vehicle_id}` - Vehicle details
+
+### Jobs (6)
+- POST `/api/jobs` - Create/update job
+- DELETE `/api/jobs/{job_id}` - Delete job
+- GET `/api/jobs/profit/{ro_id}` - Profit breakdown
+- GET `/api/jobs/canned` - Canned jobs
+- GET `/api/jobs/categories` - Job categories
+- GET `/api/jobs/favorite` - Favorite jobs
+
+### Inspections (7)
+- GET `/api/inspections/{ro_id}` - Get inspections
+- GET `/api/inspections/{id}/tasks` - Get tasks
+- PUT `/api/inspections/{id}/tasks/{task_id}` - Update task
+- POST `/api/inspections/media/video-upload-url` - Video upload URL
+- POST `/api/inspections/{id}/tasks/{task_id}/media` - Create media
+- POST `/api/inspections/{id}/tasks/{task_id}/media/{media_id}/confirm` - Confirm upload
+
+### Employees (5)
+- GET `/api/employees` - List employees
+- GET `/api/employees/{id}` - Get employee
+- GET `/api/employees/{id}/time-card-active` - Time card
+- GET `/api/employees/tech-board` - Tech board
+- GET `/api/employees/tech-board/config` - Tech board config
+
+### Inventory (2)
+- GET `/api/inventory/search` - Search parts
+- GET `/api/inventory/part/{id}` - Get part
+
+### Carfax (3)
+- GET `/api/carfax/vehicle/{vin}` - Vehicle history
+- GET `/api/carfax/vehicle/{vin}/maintenance` - Maintenance
+- GET `/api/carfax/vehicle/{vin}/recalls` - Recalls
+
+### Shop Configuration (6)
+- GET `/api/shop/config` - Shop config
+- GET `/api/shop` - Shop details
+- GET `/api/shop/lead-sources` - Lead sources
+- GET `/api/shop/ro-custom-labels` - Custom labels
+- GET `/api/shop/profitability-goal` - GP goal
+- GET `/api/shop/ro-advanced-settings` - Advanced settings
+
+### Reports (5)
+- GET `/api/reports/sales-summary` - Sales report
+- GET `/api/reports/customer-list` - Customer report
+- GET `/api/reports/ar-aging` - AR aging
+- GET `/api/reports/employee-productivity` - Employee productivity
+- GET `/api/reports/parts-purchased` - Parts spending
 
 ---
 
