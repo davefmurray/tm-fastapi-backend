@@ -322,3 +322,76 @@ async def share_invoice(ro_id: int, share_request: ShareEstimateRequest):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{ro_id}/transparency-settings")
+async def get_transparency_settings(ro_id: int):
+    """
+    Get transparency settings for RO (what shows on printed estimates/invoices)
+
+    - **ro_id**: Repair order ID
+    """
+    tm = get_tm_client()
+    await tm._ensure_token()
+
+    try:
+        result = await tm.get(f"/api/repair-order/{ro_id}/transparency-settings")
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/{ro_id}/transparency-settings")
+async def update_transparency_settings(ro_id: int, settings: List[dict]):
+    """
+    Update transparency settings (configure what's visible on estimates/invoices)
+
+    - **ro_id**: Repair order ID
+    - **settings**: Array of transparency setting objects
+    """
+    tm = get_tm_client()
+    await tm._ensure_token()
+
+    try:
+        result = await tm.put(f"/api/repair-order/{ro_id}/transparency-settings", settings)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/public/estimate/{nonce}")
+async def get_public_estimate(nonce: str, jobs: Optional[str] = Query(None, description="Comma-separated job IDs")):
+    """
+    Get public estimate view (no auth required - uses nonce)
+
+    - **nonce**: RO nonce
+    - **jobs**: Optional comma-separated job IDs
+    """
+    tm = get_tm_client()
+
+    params = {}
+    if jobs:
+        params["jobs"] = jobs
+        params["sublets"] = ""
+
+    try:
+        result = await tm.get(f"/api/public/estimate/{nonce}", params)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/public/inspection/{nonce}")
+async def get_public_inspection(nonce: str):
+    """
+    Get public inspection view (no auth required - uses nonce)
+
+    - **nonce**: RO nonce
+    """
+    tm = get_tm_client()
+
+    try:
+        result = await tm.get(f"/api/public/inspection/{nonce}")
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
