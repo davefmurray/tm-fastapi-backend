@@ -216,9 +216,9 @@ async def get_accurate_authorized_metrics(
                 if start_date <= created_date <= end_date:
                     ros_in_range.append(ro)
 
-        # Get estimate and profit for each RO
+        # Get estimate for each RO and calculate from AUTHORIZED jobs only
         total_sales = 0
-        total_cost = 0
+        total_gp_dollars = 0
         ro_count = len(ros_in_range)
 
         for ro in ros_in_range:
@@ -226,24 +226,18 @@ async def get_accurate_authorized_metrics(
                 # Get estimate
                 estimate = await tm.get(f"/api/repair-order/{ro['id']}/estimate")
 
-                # Get profit breakdown
-                profit = await tm.get(f"/api/repair-order/{ro['id']}/profit/labor")
-
-                # Sum only AUTHORIZED jobs
+                # Sum only AUTHORIZED jobs (use built-in grossProfitAmount!)
                 for job in estimate.get("jobs", []):
                     if job.get("authorized") == True:
                         total_sales += job.get("total", 0)
-
-                # Total cost from profit breakdown
-                total_cost += profit.get("totalCost", 0)
+                        total_gp_dollars += job.get("grossProfitAmount", 0)
 
             except:
                 # Skip ROs with errors
                 continue
 
         # Calculate metrics
-        gp_dollars = total_sales - total_cost
-        gp_percentage = (gp_dollars / total_sales * 100) if total_sales > 0 else 0
+        gp_percentage = (total_gp_dollars / total_sales * 100) if total_sales > 0 else 0
         aro = (total_sales / ro_count) if ro_count > 0 else 0
 
         return {
@@ -252,7 +246,7 @@ async def get_accurate_authorized_metrics(
                 "end": end
             },
             "sales": round(total_sales / 100, 2),          # Convert to dollars
-            "gp_dollars": round(gp_dollars / 100, 2),
+            "gp_dollars": round(total_gp_dollars / 100, 2),
             "gp_percentage": round(gp_percentage, 2),
             "aro": round(aro / 100, 2),
             "car_count": ro_count,
