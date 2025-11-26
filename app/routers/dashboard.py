@@ -32,7 +32,13 @@ async def get_dashboard_summary(
 
     # Default to today if not provided
     if not start or not end:
-        today = datetime.now()
+        from datetime import timezone as tz, timedelta
+        # Get timezone offset
+        offset_hours = -5  # EST (adjust based on timezone param)
+        offset = timedelta(hours=offset_hours)
+        tzinfo = tz(offset)
+
+        today = datetime.now(tzinfo)
         start = today.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
         end = today.replace(hour=23, minute=59, second=59, microsecond=999000).isoformat()
 
@@ -82,7 +88,12 @@ async def get_dashboard_breakdown(
 
     # Default to today
     if not start or not end:
-        today = datetime.now()
+        from datetime import timezone as tz, timedelta
+        offset_hours = -5  # EST
+        offset = timedelta(hours=offset_hours)
+        tzinfo = tz(offset)
+
+        today = datetime.now(tzinfo)
         start = today.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
         end = today.replace(hour=23, minute=59, second=59, microsecond=999000).isoformat()
 
