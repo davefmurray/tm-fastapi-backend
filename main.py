@@ -7,6 +7,7 @@ Provides clean REST API for TM operations with custom metric calculations.
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 import os
 
 from app.routers import authorization, dashboard, payments, customers, ro_operations, appointments, parts, vcdb, jobs, inspections, employees, inventory, carfax, shop, reports, advanced, fleet, utility
@@ -68,6 +69,12 @@ def health_check():
         "shop_id": os.getenv("TM_SHOP_ID", "configured"),
         "auth_configured": bool(os.getenv("TM_AUTH_TOKEN"))
     }
+
+
+@app.get("/dashboard")
+def serve_dashboard():
+    """Serve live dashboard HTML"""
+    return FileResponse("dashboard.html")
 
 
 if __name__ == "__main__":
