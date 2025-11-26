@@ -226,11 +226,24 @@ async def get_accurate_authorized_metrics(
                 # Get estimate
                 estimate = await tm.get(f"/api/repair-order/{ro['id']}/estimate")
 
-                # Sum only AUTHORIZED jobs (use built-in grossProfitAmount!)
-                for job in estimate.get("jobs", []):
-                    if job.get("authorized") == True:
-                        total_sales += job.get("total", 0)
-                        total_gp_dollars += job.get("grossProfitAmount", 0)
+                # Use authorizedTotal if available (includes fees/taxes)
+                # Otherwise sum authorized job totals
+                authorized_total = estimate.get("authorizedTotal")
+
+                if authorized_total:
+                    # RO has authorizedTotal (accurate with fees/taxes)
+                    total_sales += authorized_total
+
+                    # Sum GP from authorized jobs only
+                    for job in estimate.get("jobs", []):
+                        if job.get("authorized") == True:
+                            total_gp_dollars += job.get("grossProfitAmount", 0)
+                else:
+                    # Fallback: sum job totals
+                    for job in estimate.get("jobs", []):
+                        if job.get("authorized") == True:
+                            total_sales += job.get("total", 0)
+                            total_gp_dollars += job.get("grossProfitAmount", 0)
 
             except:
                 # Skip ROs with errors
