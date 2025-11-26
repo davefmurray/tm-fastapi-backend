@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import os
 
-from app.routers import authorization, dashboard, payments, customers, ro_operations, appointments
+from app.routers import authorization, dashboard, payments, customers, ro_operations, appointments, parts
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -34,6 +34,7 @@ app.include_router(payments.router, prefix="/api/payments", tags=["Payments"])
 app.include_router(customers.router, prefix="/api/customers", tags=["Customers"])
 app.include_router(ro_operations.router, prefix="/api/ro", tags=["Repair Orders"])
 app.include_router(appointments.router, prefix="/api/appointments", tags=["Appointments"])
+app.include_router(parts.router, prefix="/api/parts", tags=["Parts & Orders"])
 
 
 @app.get("/")
