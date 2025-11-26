@@ -219,38 +219,106 @@ async def get_ro_purchase_orders(ro_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/{ro_id}/status")
-async def update_ro_status(
+@router.put("/{ro_id}/complete")
+async def complete_work(
     ro_id: int,
-    status_id: int = Query(..., description="Status ID: 3=COMPLETE, 5=POSTED"),
-    completed_date: Optional[str] = Query(None),
-    posted_date: Optional[str] = Query(None),
-    miles_in: Optional[int] = Query(None),
-    miles_out: Optional[int] = Query(None)
+    completed_date: str = Query(..., description="Completion date (ISO 8601)"),
+    miles_in: int = Query(..., description="Odometer in"),
+    miles_out: int = Query(..., description="Odometer out")
 ):
     """
-    Update RO status (Complete work or Post RO)
+    Mark work as complete (before posting)
 
     - **ro_id**: Repair order ID
-    - **status_id**: 3 = COMPLETE, 5 = POSTED
+    - **completed_date**: When work was completed
+    - **miles_in**: Odometer reading in
+    - **miles_out**: Odometer reading out
     """
     tm = get_tm_client()
 
     request_body = {
-        "repairOrderStatus": {"id": status_id},
+        "repairOrderStatus": {"id": 3},
+        "completedDate": completed_date,
         "milesIn": miles_in,
         "milesOut": miles_out,
         "odometerInop": False,
         "leadSource": "API"
     }
 
-    if status_id == 3 and completed_date:
-        request_body["completedDate"] = completed_date
-    elif status_id == 5 and posted_date:
-        request_body["postedDate"] = posted_date
+    try:
+        result = await tm.put(f"/api/repair-order/{ro_id}/status", request_body)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/{ro_id}/post")
+async def post_ro(
+    ro_id: int,
+    posted_date: str = Query(..., description="Posted date (ISO 8601)"),
+    miles_in: int = Query(..., description="Odometer in"),
+    miles_out: int = Query(..., description="Odometer out")
+):
+    """
+    Post repair order (finalize and lock)
+
+    - **ro_id**: Repair order ID
+    - **posted_date**: When RO is being posted
+    - **miles_in**: Odometer reading in
+    - **miles_out**: Odometer reading out
+    """
+    tm = get_tm_client()
+
+    request_body = {
+        "repairOrderStatus": {"id": 5},
+        "postedDate": posted_date,
+        "milesIn": miles_in,
+        "milesOut": miles_out,
+        "odometerInop": False,
+        "leadSource": "API"
+    }
 
     try:
         result = await tm.put(f"/api/repair-order/{ro_id}/status", request_body)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/{ro_id}/unpost")
+async def unpost_ro(ro_id: int):
+    """
+    Unpost repair order (reopen for editing)
+
+    - **ro_id**: Repair order ID
+    """
+    tm = get_tm_client()
+
+    try:
+        result = await tm.put(f"/api/repair-order/{ro_id}/unpost", {"value": False})
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{ro_id}/share/invoice")
+async def share_invoice(ro_id: int, share_request: ShareEstimateRequest):
+    """
+    Send invoice to customer via email
+
+    - **ro_id**: Repair order ID
+    - **share_request**: Email addresses
+    """
+    tm = get_tm_client()
+
+    if not share_request.email:
+        raise HTTPException(status_code=400, detail="Email addresses required")
+
+    try:
+        result = await tm.post(
+            f"/api/repair-order/{ro_id}/invoice/share",
+            {"email": share_request.email}
+        )
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
