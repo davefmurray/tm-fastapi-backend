@@ -104,3 +104,57 @@ async def get_ro_advanced_settings():
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/labor-rates")
+async def get_labor_rates():
+    """
+    Get shop's labor rate configuration
+    """
+    tm = get_tm_client()
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
+
+    try:
+        result = await tm.get(f"/api/shop/{shop_id}/labor-rates")
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/tekmotor/tire-fitment/{vehicle_id}")
+async def get_tire_fitment(vehicle_id: int):
+    """
+    Get tire fitment data for vehicle
+
+    - **vehicle_id**: VCDB vehicle ID
+    """
+    tm = get_tm_client()
+    await tm._ensure_token()
+
+    try:
+        result = await tm.get(f"/api/tekmotor/tire/fitment/data", {"vehicleId": vehicle_id})
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/tekmotor/search/{base_vehicle_id}")
+async def tekmotor_search(base_vehicle_id: int, search: str = Query("", description="Search term")):
+    """
+    Search TekMotor database for vehicle
+
+    - **base_vehicle_id**: Base vehicle ID
+    - **search**: Search term
+    """
+    tm = get_tm_client()
+    await tm._ensure_token()
+
+    try:
+        result = await tm.get(
+            f"/api/tekmotor/v2/{base_vehicle_id}/search",
+            {"search": search, "isSmartJob": "true"}
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

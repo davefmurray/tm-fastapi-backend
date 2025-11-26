@@ -217,3 +217,39 @@ async def update_vehicle(vehicle_id: int, vehicle_data: dict):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{customer_id}")
+async def delete_customer(customer_id: int):
+    """
+    Delete/deactivate customer
+
+    - **customer_id**: Customer ID
+    """
+    tm = get_tm_client()
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
+
+    try:
+        result = await tm.delete(f"/api/shop/{shop_id}/customer/{customer_id}")
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/vehicles/{vehicle_id}")
+async def delete_vehicle(vehicle_id: int):
+    """
+    Delete/archive vehicle
+
+    - **vehicle_id**: Vehicle ID
+    """
+    tm = get_tm_client()
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
+
+    try:
+        result = await tm.delete(f"/api/shop/{shop_id}/customer/vehicle/{vehicle_id}")
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

@@ -12,6 +12,26 @@ from app.models.schemas import ShareEstimateRequest
 router = APIRouter()
 
 
+@router.post("/create")
+async def create_repair_order(ro_data: dict):
+    """
+    Create a new repair order
+
+    Required fields:
+    - customerId: Customer ID
+    - vehicleId: Vehicle ID
+    - milesIn: Odometer reading
+    """
+    tm = get_tm_client()
+    await tm._ensure_token()
+
+    try:
+        result = await tm.post("/api/repair-order/create", ro_data)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/list")
 async def get_ro_list(
     board: str = Query("ACTIVE", description="ACTIVE, POSTED, or COMPLETE"),

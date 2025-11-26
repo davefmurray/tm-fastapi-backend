@@ -115,3 +115,21 @@ async def get_appointment_colors():
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{appointment_id}")
+async def delete_appointment(appointment_id: int):
+    """
+    Delete appointment
+
+    - **appointment_id**: Appointment ID
+    """
+    tm = get_tm_client()
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
+
+    try:
+        result = await tm.delete(f"/api/shop/{shop_id}/appointment/{appointment_id}")
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
