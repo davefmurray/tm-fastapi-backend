@@ -19,6 +19,18 @@ FastAPI proxy backend for Tekmetric API with custom dashboard logic and accurate
 
 ---
 
+## Documentation
+
+**📚 Comprehensive Examples:** See [EXAMPLES.md](./EXAMPLES.md) for complete request/response examples, common patterns, and best practices.
+
+**📖 Full TM API Reference:** [tm-api-docs repository](https://github.com/davefmurray/tm-api-docs) - 170+ documented TM APIs with captured data.
+
+**🚀 API Coverage:** See [COVERAGE.md](./COVERAGE.md) for detailed analysis of implemented vs documented endpoints.
+
+**🗺️ Roadmap:** See [ROADMAP.md](./ROADMAP.md) for tier breakdown and implementation status.
+
+---
+
 ## Quick Start
 
 ### Local Development
