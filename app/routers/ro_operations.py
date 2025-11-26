@@ -118,10 +118,102 @@ async def get_ro_activity(ro_id: int):
     - **ro_id**: Repair order ID
     """
     tm = get_tm_client()
-    shop_id = tm.shop_id
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
 
     try:
         result = await tm.get(f"/api/shop/{shop_id}/activity/repair-order/{ro_id}")
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{ro_id}/job-history")
+async def get_job_history(ro_id: int, vehicle_id: int = Query(..., description="Vehicle ID")):
+    """
+    Get job history for vehicle (past jobs across all ROs)
+
+    - **ro_id**: Current repair order ID
+    - **vehicle_id**: Vehicle ID to get history for
+    """
+    tm = get_tm_client()
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
+
+    try:
+        result = await tm.get(
+            f"/api/shop/{shop_id}/jobs/job-history",
+            {
+                "repairOrderId": ro_id,
+                "vehicleIds": vehicle_id,
+                "linkedCustomers": "",
+                "size": 100
+            }
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{ro_id}/inspection-history")
+async def get_inspection_history(vehicle_id: int = Query(..., description="Vehicle ID")):
+    """
+    Get inspection history for vehicle
+
+    - **vehicle_id**: Vehicle ID
+    """
+    tm = get_tm_client()
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
+
+    try:
+        result = await tm.get(
+            f"/api/shop/{shop_id}/repair-order-inspections/history",
+            {
+                "vehicleId": vehicle_id,
+                "linkedCustomers": "",
+                "size": 100
+            }
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{ro_id}/appointments")
+async def get_ro_appointments(ro_id: int):
+    """
+    Get appointments for repair order
+
+    - **ro_id**: Repair order ID
+    """
+    tm = get_tm_client()
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
+
+    try:
+        result = await tm.get(
+            f"/api/shop/{shop_id}/appointments",
+            {"repairOrderId": ro_id, "size": 100}
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{ro_id}/purchase-orders")
+async def get_ro_purchase_orders(ro_id: int):
+    """
+    Get purchase orders for repair order
+
+    - **ro_id**: Repair order ID
+    """
+    tm = get_tm_client()
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
+
+    try:
+        result = await tm.get(f"/api/shop/{shop_id}/orders/repair-order/{ro_id}")
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
