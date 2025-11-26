@@ -48,11 +48,19 @@ class TekmetricClient:
 
     def _get_headers(self) -> Dict[str, str]:
         """Get default headers for TM API requests"""
+        if not self.auth_token:
+            raise ValueError("No auth token available")
         return {
             "x-auth-token": self.auth_token,
             "Content-Type": "application/json",
             "accept": "application/json"
         }
+
+    def get_shop_id(self) -> str:
+        """Get shop ID (must call _ensure_token first in async context)"""
+        if not self.shop_id:
+            raise ValueError("Shop ID not available - call _ensure_token first")
+        return self.shop_id
 
     async def get(self, path: str, params: Optional[Dict] = None) -> Any:
         """Make GET request to TM API"""

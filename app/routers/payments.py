@@ -20,7 +20,8 @@ async def create_payment(ro_id: int, payment: PaymentRequest):
     - **payment**: Payment details (amount in cents, type, customer info)
     """
     tm = get_tm_client()
-    shop_id = tm.shop_id
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
 
     request_body = {
         "customerName": payment.customer_name,
@@ -70,7 +71,8 @@ async def get_payments(ro_id: int):
     - **ro_id**: Repair order ID
     """
     tm = get_tm_client()
-    shop_id = tm.shop_id
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
 
     try:
         result = await tm.get(
@@ -89,7 +91,8 @@ async def void_payment(payment_id: int):
     - **payment_id**: Payment ID
     """
     tm = get_tm_client()
-    shop_id = tm.shop_id
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
 
     try:
         result = await tm.put(
@@ -109,7 +112,8 @@ async def get_payment_types():
     Returns list of payment types with IDs (Cash, Credit Card, etc.)
     """
     tm = get_tm_client()
-    shop_id = tm.shop_id
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
 
     try:
         result = await tm.get(

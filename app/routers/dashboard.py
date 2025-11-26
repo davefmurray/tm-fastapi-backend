@@ -25,7 +25,10 @@ async def get_dashboard_summary(
     Uses TM's aggregate endpoint for speed.
     """
     tm = get_tm_client()
-    shop_id = tm.shop_id
+
+    # Ensure token is loaded before accessing shop_id
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
 
     # Default to today if not provided
     if not start or not end:
@@ -74,7 +77,8 @@ async def get_dashboard_breakdown(
     Returns breakdown for each RO custom label.
     """
     tm = get_tm_client()
-    shop_id = tm.shop_id
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
 
     # Default to today
     if not start or not end:
@@ -111,7 +115,8 @@ async def get_accurate_dashboard():
     Use this for accurate sales tracking.
     """
     tm = get_tm_client()
-    shop_id = tm.shop_id
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
 
     try:
         # Get all posted ROs

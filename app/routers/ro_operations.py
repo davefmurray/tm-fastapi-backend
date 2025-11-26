@@ -28,7 +28,8 @@ async def get_ro_list(
     - **search**: Optional search term
     """
     tm = get_tm_client()
-    shop_id = tm.shop_id
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
 
     params = {
         "view": "list",
@@ -58,7 +59,8 @@ async def get_ro_details(ro_id: int):
     - **ro_id**: Repair order ID
     """
     tm = get_tm_client()
-    shop_id = tm.shop_id
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
 
     try:
         result = await tm.get(f"/api/shop/{shop_id}/repair-order/{ro_id}")

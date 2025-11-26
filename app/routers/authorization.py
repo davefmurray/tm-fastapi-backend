@@ -68,7 +68,8 @@ async def get_authorization_history(ro_id: int):
     - **ro_id**: Repair order ID
     """
     tm = get_tm_client()
-    shop_id = tm.shop_id
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
 
     try:
         result = await tm.get(f"/api/shop/{shop_id}/repair-order/{ro_id}/authorizations")

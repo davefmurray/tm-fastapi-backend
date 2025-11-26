@@ -19,7 +19,8 @@ async def create_customer(customer: CustomerCreate):
     - **customer**: Customer details (name, email, phone, address, etc.)
     """
     tm = get_tm_client()
-    shop_id = tm.shop_id
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
 
     request_body = {
         "shopId": int(shop_id),
@@ -73,7 +74,8 @@ async def search_customers(
     - **size**: Number of results
     """
     tm = get_tm_client()
-    shop_id = tm.shop_id
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
 
     try:
         result = await tm.get(
@@ -93,7 +95,8 @@ async def get_customer(customer_id: int):
     - **customer_id**: Customer ID
     """
     tm = get_tm_client()
-    shop_id = tm.shop_id
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
 
     try:
         result = await tm.get(f"/api/shop/{shop_id}/customer/{customer_id}")
@@ -110,7 +113,8 @@ async def create_vehicle(vehicle: VehicleCreate):
     - **vehicle**: Vehicle details (year, make, model, customer_id, etc.)
     """
     tm = get_tm_client()
-    shop_id = tm.shop_id
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
 
     # Get VCDB vehicle data first
     try:
@@ -154,7 +158,8 @@ async def get_customer_vehicles(customer_id: int):
     - **customer_id**: Customer ID
     """
     tm = get_tm_client()
-    shop_id = tm.shop_id
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
 
     try:
         result = await tm.get(
