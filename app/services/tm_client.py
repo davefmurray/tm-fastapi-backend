@@ -2,11 +2,13 @@
 Tekmetric API Client
 
 Handles all HTTP requests to Tekmetric API with authentication.
+Auto-fetches JWT tokens from Supabase (refreshed by Chrome extension).
 """
 
 import os
 import httpx
 from typing import Optional, Dict, Any
+from app.services.supabase_client import get_token_manager
 
 
 class TekmetricClient:
@@ -14,9 +16,35 @@ class TekmetricClient:
 
     def __init__(self, auth_token: Optional[str] = None, shop_id: Optional[str] = None):
         self.base_url = os.getenv("TM_BASE_URL", "https://shop.tekmetric.com")
-        self.auth_token = auth_token or os.getenv("TM_AUTH_TOKEN")
-        self.shop_id = shop_id or os.getenv("TM_SHOP_ID")
         self.timeout = 30.0
+        self.use_supabase = os.getenv("USE_SUPABASE", "true").lower() == "true"
+
+        # Manual override if provided
+        if auth_token and shop_id:
+            self.auth_token = auth_token
+            self.shop_id = shop_id
+        else:
+            # Will fetch from Supabase on first request
+            self.auth_token = None
+            self.shop_id = None
+
+    async def _ensure_token(self):
+        """Ensure we have a valid token (fetch from Supabase if needed)"""
+        if self.auth_token and self.shop_id:
+            return
+
+        if self.use_supabase:
+            try:
+                token_manager = get_token_manager()
+                self.auth_token, self.shop_id = await token_manager.get_token_with_fallback()
+            except Exception as e:
+                print(f"[TM Client] Error fetching token from Supabase: {e}")
+                # Fallback to environment variables
+                self.auth_token = os.getenv("TM_AUTH_TOKEN")
+                self.shop_id = os.getenv("TM_SHOP_ID")
+        else:
+            self.auth_token = os.getenv("TM_AUTH_TOKEN")
+            self.shop_id = os.getenv("TM_SHOP_ID")
 
     def _get_headers(self) -> Dict[str, str]:
         """Get default headers for TM API requests"""
@@ -28,6 +56,7 @@ class TekmetricClient:
 
     async def get(self, path: str, params: Optional[Dict] = None) -> Any:
         """Make GET request to TM API"""
+        await self._ensure_token()
         url = f"{self.base_url}{path}"
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -37,6 +66,7 @@ class TekmetricClient:
 
     async def post(self, path: str, data: Dict) -> Any:
         """Make POST request to TM API"""
+        await self._ensure_token()
         url = f"{self.base_url}{path}"
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -46,6 +76,7 @@ class TekmetricClient:
 
     async def put(self, path: str, data: Dict) -> Any:
         """Make PUT request to TM API"""
+        await self._ensure_token()
         url = f"{self.base_url}{path}"
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -55,6 +86,7 @@ class TekmetricClient:
 
     async def patch(self, path: str, data: Dict) -> Any:
         """Make PATCH request to TM API"""
+        await self._ensure_token()
         url = f"{self.base_url}{path}"
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -64,6 +96,7 @@ class TekmetricClient:
 
     async def delete(self, path: str) -> Any:
         """Make DELETE request to TM API"""
+        await self._ensure_token()
         url = f"{self.base_url}{path}"
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:

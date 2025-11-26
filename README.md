@@ -88,12 +88,33 @@ Railway will auto-detect FastAPI and deploy with the correct start command.
 
 ## Environment Variables
 
+### Option A: Supabase (Recommended - Auto-Refreshing Tokens)
+
+| Variable | Required | Description | Example |
+|----------|----------|-------------|---------|
+| `SUPABASE_URL` | Yes | Your Supabase project URL | `https://xyz.supabase.co` |
+| `SUPABASE_KEY` | Yes | Supabase anon key | `eyJhbGc...` |
+| `SUPABASE_TABLE_NAME` | No | Table storing JWT tokens | `jwt_tokens` (default) |
+| `USE_SUPABASE` | No | Enable Supabase token fetching | `true` (default) |
+| `TM_BASE_URL` | No | TM base URL | `https://shop.tekmetric.com` |
+| `PORT` | No | Server port (Railway sets this) | `8000` |
+
+**How it works:**
+- Chrome extension captures JWT tokens from Tekmetric
+- Extension syncs tokens to Supabase in real-time
+- FastAPI backend pulls latest token from Supabase
+- Tokens auto-refresh (no manual updates needed!)
+
+### Option B: Manual Tokens (Fallback)
+
 | Variable | Required | Description | Example |
 |----------|----------|-------------|---------|
 | `TM_AUTH_TOKEN` | Yes | Tekmetric JWT token | `eyJhbGc...` |
 | `TM_SHOP_ID` | Yes | Your Tekmetric shop ID | `6212` |
 | `TM_BASE_URL` | No | TM base URL | `https://shop.tekmetric.com` |
-| `PORT` | No | Server port (Railway sets this) | `8000` |
+| `USE_SUPABASE` | No | Disable Supabase | `false` |
+
+**Note:** Tokens expire! You'll need to update `TM_AUTH_TOKEN` manually when it expires.
 
 ---
 
@@ -219,16 +240,76 @@ tm-fastapi-backend/
 
 ---
 
-## Getting Your JWT Token
+## Supabase Setup (Recommended)
+
+**Architecture:**
+```
+Chrome Extension → Captures JWT → Supabase
+                                     ↓
+FastAPI Backend → Fetches JWT ←──────┘
+                     ↓
+            Tekmetric API
+```
+
+### 1. Supabase Table Setup
+
+Create a table in Supabase:
+
+```sql
+CREATE TABLE jwt_tokens (
+  id BIGSERIAL PRIMARY KEY,
+  jwt_token TEXT NOT NULL,
+  shop_id TEXT NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Enable RLS (Row Level Security)
+ALTER TABLE jwt_tokens ENABLE ROW LEVEL SECURITY;
+
+-- Create policy for anon access
+CREATE POLICY "Allow anon read/write"
+  ON jwt_tokens FOR ALL
+  USING (true)
+  WITH CHECK (true);
+```
+
+### 2. Chrome Extension Configuration
+
+Configure the JWT extension to sync to your Supabase:
+- Set `SUPABASE_URL` in extension
+- Set `SUPABASE_KEY` in extension
+- Extension will auto-capture and upload tokens
+
+### 3. FastAPI Backend Configuration
+
+Add to Railway environment variables:
+```
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your_anon_key_here
+USE_SUPABASE=true
+```
+
+**That's it!** Backend will auto-fetch latest token from Supabase.
+
+---
+
+## Manual JWT Token (Without Supabase)
+
+If not using Supabase:
 
 1. Open Tekmetric in Chrome
 2. Open DevTools (F12)
 3. Go to Application tab → Local Storage → shop.tekmetric.com
 4. Find `auth_token` or check Network tab requests for `x-auth-token` header
 5. Copy the JWT token (starts with `eyJ...`)
-6. Add to `.env` file or Railway environment variables
+6. Add to `.env` file or Railway environment variables:
+   ```
+   TM_AUTH_TOKEN=your_jwt_token_here
+   TM_SHOP_ID=6212
+   USE_SUPABASE=false
+   ```
 
-**Note:** Tokens expire! You may need to update periodically.
+**Note:** Tokens expire! You'll need to update manually.
 
 ---
 
