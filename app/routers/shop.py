@@ -4,7 +4,7 @@ Shop Configuration Endpoints
 Shop settings, labor rates, pricing matrices, and configuration.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from app.services.tm_client import get_tm_client
 
 router = APIRouter()
