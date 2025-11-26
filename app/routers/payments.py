@@ -11,6 +11,26 @@ from app.models.schemas import PaymentRequest
 router = APIRouter()
 
 
+@router.get("/types")
+async def get_payment_types():
+    """
+    Get all payment types configured for shop
+
+    Returns list of payment types with IDs (Cash, Credit Card, etc.)
+    """
+    tm = get_tm_client()
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
+
+    try:
+        result = await tm.get(
+            f"/api/tekmerchant/shop/{shop_id}/payment-settings/other-payment-types"
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/{ro_id}")
 async def create_payment(ro_id: int, payment: PaymentRequest):
     """
@@ -98,26 +118,6 @@ async def void_payment(payment_id: int):
         result = await tm.put(
             f"/api/tekmerchant/shop/{shop_id}/repair-orders/payment/{payment_id}/void-attempt",
             {}
-        )
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/types")
-async def get_payment_types():
-    """
-    Get all payment types configured for shop
-
-    Returns list of payment types with IDs (Cash, Credit Card, etc.)
-    """
-    tm = get_tm_client()
-    await tm._ensure_token()
-    shop_id = tm.get_shop_id()
-
-    try:
-        result = await tm.get(
-            f"/api/tekmerchant/shop/{shop_id}/payment-settings/other-payment-types"
         )
         return result
     except Exception as e:
