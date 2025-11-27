@@ -55,6 +55,30 @@ class SupabaseTokenManager:
             print(f"[Supabase] Error fetching token: {e}")
             return None, None
 
+    async def update_token(self, jwt_token: str, shop_id: str) -> bool:
+        """
+        Update/insert token in Supabase
+
+        Returns:
+            True if successful
+        """
+        try:
+            # Upsert token - update if shop_id exists, insert if not
+            result = self.supabase.table(self.table_name) \
+                .upsert({
+                    "shop_id": int(shop_id),
+                    "jwt_token": jwt_token,
+                    "updated_at": datetime.utcnow().isoformat()
+                }, on_conflict="shop_id") \
+                .execute()
+
+            print(f"[Supabase] Token updated for shop {shop_id}")
+            return True
+
+        except Exception as e:
+            print(f"[Supabase] Error updating token: {e}")
+            return False
+
     async def get_token_with_fallback(self) -> Tuple[str, str]:
         """
         Get token from Supabase with fallback to environment variables
