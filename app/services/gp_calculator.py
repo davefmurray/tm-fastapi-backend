@@ -796,3 +796,323 @@ def _convert_cents_to_dollars(d: Any) -> Any:
     elif isinstance(d, list):
         return [_convert_cents_to_dollars(item) for item in d]
     return d
+
+
+# ============== Tier 3: Analytics Dataclasses ==============
+
+@dataclass
+class TechPerformance:
+    """Tier 3: Technician performance metrics"""
+    tech_id: int
+    tech_name: str
+    hourly_rate: int  # cents
+    # Labor metrics
+    hours_billed: float
+    labor_revenue: int  # cents
+    labor_cost: int  # cents
+    labor_profit: int  # cents
+    labor_margin_pct: float
+    # Jobs
+    jobs_worked: int
+    ros_worked: int
+    # Efficiency
+    gp_per_hour: int  # cents
+    # Rate source breakdown
+    rate_source_counts: Dict[str, int] = field(default_factory=dict)
+
+
+@dataclass
+class AdvisorPerformance:
+    """Tier 3: Service advisor performance metrics"""
+    advisor_id: int
+    advisor_name: str
+    # Sales
+    total_sales: int  # cents
+    total_cost: int  # cents
+    gross_profit: int  # cents
+    gp_percentage: float
+    # Volume
+    ro_count: int
+    job_count: int
+    # Averages
+    aro: int  # cents (average repair order)
+    avg_job_value: int  # cents
+    # Category breakdown
+    parts_sales: int = 0
+    labor_sales: int = 0
+    sublet_sales: int = 0
+    fee_sales: int = 0
+
+
+@dataclass
+class PartsMarginAnalysis:
+    """Tier 3: Parts margin analysis"""
+    total_parts_retail: int  # cents
+    total_parts_cost: int  # cents
+    total_parts_profit: int  # cents
+    overall_margin_pct: float
+    # By quantity ranges
+    single_items: Dict[str, Any] = field(default_factory=dict)  # qty = 1
+    multi_items: Dict[str, Any] = field(default_factory=dict)  # qty > 1
+    # High/low performers
+    highest_margin_parts: List[Dict] = field(default_factory=list)
+    lowest_margin_parts: List[Dict] = field(default_factory=list)
+    # Quantity distribution
+    avg_quantity: float = 1.0
+    total_line_items: int = 0
+
+
+@dataclass
+class LaborEfficiency:
+    """Tier 3: Labor efficiency metrics"""
+    total_hours_billed: float
+    total_labor_revenue: int  # cents
+    total_labor_cost: int  # cents
+    total_labor_profit: int  # cents
+    overall_margin_pct: float
+    # Rate analysis
+    avg_retail_rate: int  # cents/hr
+    avg_tech_cost_rate: int  # cents/hr
+    effective_spread: int  # cents/hr (retail - cost)
+    # By rate source
+    by_rate_source: Dict[str, Dict] = field(default_factory=dict)
+    # Jobs
+    total_labor_items: int = 0
+
+
+@dataclass
+class VarianceAnalysis:
+    """Tier 3: Variance between TM aggregates and true calculations"""
+    # TM Aggregates
+    tm_sales: int  # cents
+    tm_gp: int  # cents
+    tm_gp_pct: float
+    tm_car_count: int
+    tm_aro: int  # cents
+    # True Calculations
+    true_sales: int  # cents
+    true_cost: int  # cents
+    true_gp: int  # cents
+    true_gp_pct: float
+    true_car_count: int
+    true_aro: int  # cents
+    # Deltas
+    sales_delta: int  # cents
+    sales_delta_pct: float
+    gp_delta: int  # cents
+    gp_pct_delta: float  # percentage points
+    car_count_delta: int
+    aro_delta: int  # cents
+    # Variance notes
+    variance_reasons: List[str] = field(default_factory=list)
+
+
+# ============== Tier 3: Analytics Functions ==============
+
+def aggregate_tech_performance(ro_results: List[ROTrueGP]) -> Dict[int, TechPerformance]:
+    """
+    Tier 3: Aggregate technician performance from RO calculations.
+    Returns dict keyed by tech_id.
+    """
+    tech_data: Dict[int, Dict] = {}
+
+    for ro in ro_results:
+        for job in ro.jobs:
+            for labor in job.labor_detail:
+                tech_id = labor.labor_id  # Using labor_id as placeholder
+                tech_name = labor.tech_name or "Unassigned"
+
+                # Get or create tech entry
+                if labor.tech_rate > 0:
+                    # Try to identify tech from rate source
+                    if labor.tech_rate_source == 'assigned' and labor.tech_name:
+                        # Hash the name to get a consistent ID
+                        tech_id = hash(labor.tech_name) % 100000
+                        tech_name = labor.tech_name
+                    else:
+                        tech_id = 0
+                        tech_name = f"Shop Average ({labor.tech_rate_source})"
+
+                if tech_id not in tech_data:
+                    tech_data[tech_id] = {
+                        'tech_id': tech_id,
+                        'tech_name': tech_name,
+                        'hourly_rate': labor.tech_rate,
+                        'hours_billed': 0.0,
+                        'labor_revenue': 0,
+                        'labor_cost': 0,
+                        'labor_profit': 0,
+                        'jobs_worked': 0,
+                        'ros_worked': set(),
+                        'rate_source_counts': {}
+                    }
+
+                td = tech_data[tech_id]
+                td['hours_billed'] += labor.hours
+                td['labor_revenue'] += labor.total_retail
+                td['labor_cost'] += labor.total_cost
+                td['labor_profit'] += labor.profit
+                td['jobs_worked'] += 1
+                td['ros_worked'].add(ro.ro_id)
+                td['rate_source_counts'][labor.tech_rate_source] = \
+                    td['rate_source_counts'].get(labor.tech_rate_source, 0) + 1
+
+    # Convert to TechPerformance objects
+    results = {}
+    for tech_id, td in tech_data.items():
+        margin_pct = (td['labor_profit'] / td['labor_revenue'] * 100) if td['labor_revenue'] > 0 else 0
+        gp_per_hour = int(td['labor_profit'] / td['hours_billed']) if td['hours_billed'] > 0 else 0
+
+        results[tech_id] = TechPerformance(
+            tech_id=tech_id,
+            tech_name=td['tech_name'],
+            hourly_rate=td['hourly_rate'],
+            hours_billed=round(td['hours_billed'], 2),
+            labor_revenue=td['labor_revenue'],
+            labor_cost=td['labor_cost'],
+            labor_profit=td['labor_profit'],
+            labor_margin_pct=round(margin_pct, 2),
+            jobs_worked=td['jobs_worked'],
+            ros_worked=len(td['ros_worked']),
+            gp_per_hour=gp_per_hour,
+            rate_source_counts=td['rate_source_counts']
+        )
+
+    return results
+
+
+def aggregate_parts_margin(ro_results: List[ROTrueGP]) -> PartsMarginAnalysis:
+    """
+    Tier 3: Analyze parts margins across all ROs.
+    """
+    total_retail = 0
+    total_cost = 0
+    all_parts = []
+    single_qty_retail = 0
+    single_qty_cost = 0
+    single_qty_count = 0
+    multi_qty_retail = 0
+    multi_qty_cost = 0
+    multi_qty_count = 0
+
+    for ro in ro_results:
+        for job in ro.jobs:
+            for part in job.parts_detail:
+                total_retail += part.total_retail
+                total_cost += part.total_cost
+
+                all_parts.append({
+                    'name': part.name,
+                    'quantity': part.quantity,
+                    'cost': part.total_cost,
+                    'retail': part.total_retail,
+                    'profit': part.profit,
+                    'margin_pct': part.margin_pct
+                })
+
+                if part.quantity == 1:
+                    single_qty_retail += part.total_retail
+                    single_qty_cost += part.total_cost
+                    single_qty_count += 1
+                else:
+                    multi_qty_retail += part.total_retail
+                    multi_qty_cost += part.total_cost
+                    multi_qty_count += 1
+
+    total_profit = total_retail - total_cost
+    overall_margin = (total_profit / total_retail * 100) if total_retail > 0 else 0
+
+    # Sort for high/low performers
+    sorted_parts = sorted(all_parts, key=lambda x: x['margin_pct'], reverse=True)
+    highest = sorted_parts[:5] if len(sorted_parts) >= 5 else sorted_parts
+    lowest = sorted_parts[-5:] if len(sorted_parts) >= 5 else []
+
+    avg_qty = sum(p['quantity'] for p in all_parts) / len(all_parts) if all_parts else 1.0
+
+    return PartsMarginAnalysis(
+        total_parts_retail=total_retail,
+        total_parts_cost=total_cost,
+        total_parts_profit=total_profit,
+        overall_margin_pct=round(overall_margin, 2),
+        single_items={
+            'count': single_qty_count,
+            'retail': single_qty_retail,
+            'cost': single_qty_cost,
+            'profit': single_qty_retail - single_qty_cost,
+            'margin_pct': round((single_qty_retail - single_qty_cost) / single_qty_retail * 100, 2) if single_qty_retail > 0 else 0
+        },
+        multi_items={
+            'count': multi_qty_count,
+            'retail': multi_qty_retail,
+            'cost': multi_qty_cost,
+            'profit': multi_qty_retail - multi_qty_cost,
+            'margin_pct': round((multi_qty_retail - multi_qty_cost) / multi_qty_retail * 100, 2) if multi_qty_retail > 0 else 0
+        },
+        highest_margin_parts=highest,
+        lowest_margin_parts=lowest,
+        avg_quantity=round(avg_qty, 2),
+        total_line_items=len(all_parts)
+    )
+
+
+def aggregate_labor_efficiency(ro_results: List[ROTrueGP]) -> LaborEfficiency:
+    """
+    Tier 3: Analyze labor efficiency metrics.
+    """
+    total_hours = 0.0
+    total_revenue = 0
+    total_cost = 0
+    total_items = 0
+
+    by_source: Dict[str, Dict] = {
+        'assigned': {'hours': 0, 'revenue': 0, 'cost': 0, 'count': 0},
+        'shop_average': {'hours': 0, 'revenue': 0, 'cost': 0, 'count': 0},
+        'default': {'hours': 0, 'revenue': 0, 'cost': 0, 'count': 0}
+    }
+
+    retail_rates = []
+    cost_rates = []
+
+    for ro in ro_results:
+        for job in ro.jobs:
+            for labor in job.labor_detail:
+                total_hours += labor.hours
+                total_revenue += labor.total_retail
+                total_cost += labor.total_cost
+                total_items += 1
+
+                retail_rates.append(labor.rate)
+                cost_rates.append(labor.tech_rate)
+
+                source = labor.tech_rate_source
+                if source in by_source:
+                    by_source[source]['hours'] += labor.hours
+                    by_source[source]['revenue'] += labor.total_retail
+                    by_source[source]['cost'] += labor.total_cost
+                    by_source[source]['count'] += 1
+
+    total_profit = total_revenue - total_cost
+    overall_margin = (total_profit / total_revenue * 100) if total_revenue > 0 else 0
+
+    avg_retail = int(sum(retail_rates) / len(retail_rates)) if retail_rates else 0
+    avg_cost = int(sum(cost_rates) / len(cost_rates)) if cost_rates else 0
+
+    # Calculate margin for each source
+    for source, data in by_source.items():
+        if data['revenue'] > 0:
+            data['margin_pct'] = round((data['revenue'] - data['cost']) / data['revenue'] * 100, 2)
+        else:
+            data['margin_pct'] = 0
+
+    return LaborEfficiency(
+        total_hours_billed=round(total_hours, 2),
+        total_labor_revenue=total_revenue,
+        total_labor_cost=total_cost,
+        total_labor_profit=total_profit,
+        overall_margin_pct=round(overall_margin, 2),
+        avg_retail_rate=avg_retail,
+        avg_tech_cost_rate=avg_cost,
+        effective_spread=avg_retail - avg_cost,
+        by_rate_source=by_source,
+        total_labor_items=total_items
+    )
