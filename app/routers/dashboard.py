@@ -205,44 +205,61 @@ async def get_accurate_authorized_metrics(
 
         all_ros = active_ros + posted_ros
 
-        # Filter ROs created in date range (for car count)
+        # Filter jobs authorized in date range (NOT RO created date!)
         start_date = datetime.fromisoformat(start).date()
         end_date = datetime.fromisoformat(end).date()
 
-        ros_in_range = []
-        for ro in all_ros:
-            if ro.get("createdDate"):
-                created_date = datetime.fromisoformat(ro["createdDate"].replace("Z", "+00:00")).date()
-                if start_date <= created_date <= end_date:
-                    ros_in_range.append(ro)
-
-        # Get estimate for each RO and calculate from AUTHORIZED jobs only
+        # Get estimate for ALL ROs and filter by job authorization date
         total_sales = 0
         total_subtotal = 0
         total_gp_dollars = 0
-        ro_count = len(ros_in_range)
+        ro_count = 0
+        ro_ids_with_auth = set()
 
-        for ro in ros_in_range:
+        for ro in all_ros:
             try:
                 # Get estimate
                 estimate = await tm.get(f"/api/repair-order/{ro['id']}/estimate")
 
-                # Use authorizedTotal if available (includes fees/taxes)
-                authorized_total = estimate.get("authorizedTotal")
+                # Check each job's authorization date
+                ro_has_authorized_jobs_in_range = False
 
-                if authorized_total and authorized_total > 0:
-                    # RO has authorized jobs
-                    total_sales += authorized_total  # Total with taxes for Sales metric
+                for job in estimate.get("jobs", []):
+                    # Only count jobs authorized in the date range
+                    if job.get("authorized") == True and job.get("authorizedDate"):
+                        auth_date = datetime.fromisoformat(job["authorizedDate"].replace("Z", "+00:00")).date()
 
-                    # Sum GP and subtotal from authorized jobs only
-                    for job in estimate.get("jobs", []):
-                        if job.get("authorized") == True:
+                        if start_date <= auth_date <= end_date:
+                            # Job was authorized in our date range!
+                            total_sales += job.get("total", 0)
+                            total_subtotal += job.get("subtotal", 0)
                             total_gp_dollars += job.get("grossProfitAmount", 0)
-                            total_subtotal += job.get("subtotal", 0)  # Before taxes
+                            ro_has_authorized_jobs_in_range = True
+
+                # Count unique ROs (car count)
+                if ro_has_authorized_jobs_in_range:
+                    ro_ids_with_auth.add(ro["id"])
 
             except:
                 # Skip ROs with errors
                 continue
+
+        ro_count = len(ro_ids_with_auth)
+
+        # Add RO-level fees/taxes if RO has authorized jobs
+        # For simplicity, distribute proportionally (could be improved)
+        if ro_count > 0:
+            # Re-process to get authorizedTotal and add delta
+            for ro in all_ros:
+                if ro["id"] in ro_ids_with_auth:
+                    try:
+                        estimate = await tm.get(f"/api/repair-order/{ro['id']}/estimate")
+                        # Add difference between authorizedTotal and job totals (fees/taxes)
+                        auth_total = estimate.get("authorizedTotal", 0)
+                        job_total_sum = sum(j.get("total", 0) for j in estimate.get("jobs", []) if j.get("authorized") == True)
+                        total_sales += (auth_total - job_total_sum)
+                    except:
+                        pass
 
         # Calculate metrics
         # GP% calculated on SUBTOTAL (before taxes) - matches TM formula
