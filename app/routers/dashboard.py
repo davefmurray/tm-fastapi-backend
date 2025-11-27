@@ -191,8 +191,7 @@ async def get_accurate_authorized_metrics(
     shop_id = tm.get_shop_id()
 
     try:
-        # Get ROs from all boards (just first page for speed - ~1500 ROs)
-        # For recent authorizations, this should be sufficient
+        # Get ROs from all boards (first page only)
         all_ros = []
 
         for board in ["ACTIVE", "POSTED", "COMPLETE"]:
@@ -205,18 +204,27 @@ async def get_accurate_authorized_metrics(
             except:
                 pass
 
-        # Filter jobs authorized in date range (NOT RO created date!)
+        # Filter to ROs updated in date range (optimization - ROs with today's auth usually updated today)
         start_date = datetime.fromisoformat(start).date()
         end_date = datetime.fromisoformat(end).date()
 
-        # Get estimate for ALL ROs and filter by job authorization date
+        # Filter ROs by update date first (performance optimization)
+        recent_ros = []
+        for ro in all_ros:
+            if ro.get("updatedDate"):
+                updated_date = datetime.fromisoformat(ro["updatedDate"].replace("Z", "+00:00")).date()
+                # Include ROs updated within 7 days of the date range
+                if (start_date - timedelta(days=7)) <= updated_date <= (end_date + timedelta(days=1)):
+                    recent_ros.append(ro)
+
+        # Get estimate for recent ROs and filter by job authorization date
         total_sales = 0
         total_subtotal = 0
         total_gp_dollars = 0
         ro_count = 0
         ro_ids_with_auth = set()
 
-        for ro in all_ros:
+        for ro in recent_ros:
             try:
                 # Get estimate
                 estimate = await tm.get(f"/api/repair-order/{ro['id']}/estimate")
@@ -250,7 +258,7 @@ async def get_accurate_authorized_metrics(
         # For simplicity, distribute proportionally (could be improved)
         if ro_count > 0:
             # Re-process to get authorizedTotal and add delta
-            for ro in all_ros:
+            for ro in recent_ros:
                 if ro["id"] in ro_ids_with_auth:
                     try:
                         estimate = await tm.get(f"/api/repair-order/{ro['id']}/estimate")
