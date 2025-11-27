@@ -218,6 +218,7 @@ async def get_accurate_authorized_metrics(
 
         # Get estimate for each RO and calculate from AUTHORIZED jobs only
         total_sales = 0
+        total_subtotal = 0
         total_gp_dollars = 0
         ro_count = len(ros_in_range)
 
@@ -227,30 +228,25 @@ async def get_accurate_authorized_metrics(
                 estimate = await tm.get(f"/api/repair-order/{ro['id']}/estimate")
 
                 # Use authorizedTotal if available (includes fees/taxes)
-                # Otherwise sum authorized job totals
                 authorized_total = estimate.get("authorizedTotal")
 
-                if authorized_total:
-                    # RO has authorizedTotal (accurate with fees/taxes)
-                    total_sales += authorized_total
+                if authorized_total and authorized_total > 0:
+                    # RO has authorized jobs
+                    total_sales += authorized_total  # Total with taxes for Sales metric
 
-                    # Sum GP from authorized jobs only
+                    # Sum GP and subtotal from authorized jobs only
                     for job in estimate.get("jobs", []):
                         if job.get("authorized") == True:
                             total_gp_dollars += job.get("grossProfitAmount", 0)
-                else:
-                    # Fallback: sum job totals
-                    for job in estimate.get("jobs", []):
-                        if job.get("authorized") == True:
-                            total_sales += job.get("total", 0)
-                            total_gp_dollars += job.get("grossProfitAmount", 0)
+                            total_subtotal += job.get("subtotal", 0)  # Before taxes
 
             except:
                 # Skip ROs with errors
                 continue
 
         # Calculate metrics
-        gp_percentage = (total_gp_dollars / total_sales * 100) if total_sales > 0 else 0
+        # GP% calculated on SUBTOTAL (before taxes) - matches TM formula
+        gp_percentage = (total_gp_dollars / total_subtotal * 100) if total_subtotal > 0 else 0
         aro = (total_sales / ro_count) if ro_count > 0 else 0
 
         return {
