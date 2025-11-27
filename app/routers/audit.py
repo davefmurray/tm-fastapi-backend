@@ -253,29 +253,36 @@ async def audit_single_ro(tm, ro_summary: dict, audit_date) -> dict:
         audit_record["data_sources"]["estimate"] = {"error": str(e)}
 
     # Source 3: Profit/Labor endpoint
-    # NOTE: This endpoint returns nested objects, not flat fields:
-    # - labor_profit: { hours, retail, cost, profit, margin }
-    # - parts_profit: { quantity, retail, cost, profit, margin }
-    # - total_profit: { retail, cost, profit, margin }
+    # NOTE: API uses camelCase and returns nested objects:
+    # - laborProfit: { hours, retail, cost, profit, margin }
+    # - totalProfit: { retail, cost, profit, margin }
+    # - partsProfit is NOT returned - calculate as (total - labor)
     try:
         profit_labor = await tm.get(f"/api/repair-order/{ro_id}/profit/labor")
 
-        # Extract from nested structure
-        labor_obj = profit_labor.get("labor_profit", {}) or {}
-        parts_obj = profit_labor.get("parts_profit", {}) or {}
-        total_obj = profit_labor.get("total_profit", {}) or {}
+        # Extract from nested structure (camelCase keys!)
+        labor_obj = profit_labor.get("laborProfit", {}) or {}
+        total_obj = profit_labor.get("totalProfit", {}) or {}
+
+        # Calculate parts from total - labor (no explicit partsProfit field)
+        labor_revenue = labor_obj.get("retail") or 0
+        total_revenue = total_obj.get("retail") or 0
+        parts_revenue_implied = total_revenue - labor_revenue
+
+        labor_cost = labor_obj.get("cost") or 0
+        total_cost = total_obj.get("cost") or 0
+        parts_cost_implied = total_cost - labor_cost
 
         audit_record["data_sources"]["profit_labor"] = {
-            "labor_revenue": labor_obj.get("retail"),
-            "labor_cost": labor_obj.get("cost"),
+            "labor_revenue": labor_revenue,
+            "labor_cost": labor_cost,
             "labor_profit": labor_obj.get("profit"),
             "labor_margin": labor_obj.get("margin"),
-            "parts_revenue": parts_obj.get("retail"),
-            "parts_cost": parts_obj.get("cost"),
-            "parts_profit": parts_obj.get("profit"),
-            "parts_margin": parts_obj.get("margin"),
-            "total_revenue": total_obj.get("retail"),
-            "total_cost": total_obj.get("cost"),
+            "parts_revenue": parts_revenue_implied,
+            "parts_cost": parts_cost_implied,
+            "parts_profit": (total_obj.get("profit") or 0) - (labor_obj.get("profit") or 0),
+            "total_revenue": total_revenue,
+            "total_cost": total_cost,
             "total_profit": total_obj.get("profit"),
             "total_margin": total_obj.get("margin")
         }
@@ -284,29 +291,27 @@ async def audit_single_ro(tm, ro_summary: dict, audit_date) -> dict:
         if "calculated_values" in audit_record:
             calc = audit_record["calculated_values"]
 
-            # Check labor revenue (from nested labor_profit.retail)
-            labor_rev_reported = labor_obj.get("retail") or 0
+            # Check labor revenue
             labor_rev_calc = int(calc["labor_total"] * 100)
-            if abs(labor_rev_reported - labor_rev_calc) > 100:
+            if abs(labor_revenue - labor_rev_calc) > 100:
                 audit_record["discrepancies"].append({
                     "type": "cross_endpoint_disagreements",
                     "field": "labor_revenue",
                     "calculated": cents_to_dollars(labor_rev_calc),
-                    "profit_labor_reported": cents_to_dollars(labor_rev_reported),
-                    "difference": cents_to_dollars(labor_rev_calc - labor_rev_reported),
+                    "profit_labor_reported": cents_to_dollars(labor_revenue),
+                    "difference": cents_to_dollars(labor_rev_calc - labor_revenue),
                     "suspected_cause": "profit/labor endpoint disagrees with line item sum"
                 })
 
-            # Check parts revenue (from nested parts_profit.retail)
-            parts_rev_reported = parts_obj.get("retail") or 0
+            # Check parts revenue (implied from total - labor)
             parts_rev_calc = int(calc["parts_total"] * 100)
-            if abs(parts_rev_reported - parts_rev_calc) > 100:
+            if abs(parts_revenue_implied - parts_rev_calc) > 100:
                 audit_record["discrepancies"].append({
                     "type": "cross_endpoint_disagreements",
                     "field": "parts_revenue",
                     "calculated": cents_to_dollars(parts_rev_calc),
-                    "profit_labor_reported": cents_to_dollars(parts_rev_reported),
-                    "difference": cents_to_dollars(parts_rev_calc - parts_rev_reported),
+                    "profit_labor_reported": cents_to_dollars(parts_revenue_implied),
+                    "difference": cents_to_dollars(parts_rev_calc - parts_revenue_implied),
                     "suspected_cause": "profit/labor endpoint disagrees with line item sum"
                 })
 
