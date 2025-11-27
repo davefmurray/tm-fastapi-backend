@@ -150,23 +150,30 @@
         const API_BASE = 'https://tm-fastapi-backend-production.up.railway.app';
 
         function getDateRange(period) {
-            const today = new Date();
+            // Use UTC-5 (EST) to match shop timezone
+            const now = new Date();
+            const offset = -5 * 60; // EST offset in minutes
+            const estTime = new Date(now.getTime() + (offset + now.getTimezoneOffset()) * 60000);
+
             let start, end;
 
             if (period === 'day') {
-                start = end = today.toISOString().split('T')[0];
+                // Today in EST
+                start = end = estTime.toISOString().split('T')[0];
             } else if (period === 'week') {
-                // Start of week (Sunday)
-                const dayOfWeek = today.getDay();
-                start = new Date(today);
-                start.setDate(today.getDate() - dayOfWeek);
-                start = start.toISOString().split('T')[0];
-                end = today.toISOString().split('T')[0];
+                // Start of week (Sunday) in EST
+                const dayOfWeek = estTime.getDay();
+                const weekStart = new Date(estTime);
+                weekStart.setDate(estTime.getDate() - dayOfWeek);
+                start = weekStart.toISOString().split('T')[0];
+                end = estTime.toISOString().split('T')[0];
             } else if (period === 'month') {
-                start = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
-                end = today.toISOString().split('T')[0];
+                // Start of month in EST
+                start = new Date(estTime.getFullYear(), estTime.getMonth(), 1).toISOString().split('T')[0];
+                end = estTime.toISOString().split('T')[0];
             }
 
+            console.log(`${period}: ${start} to ${end}`);
             return { start, end };
         }
 
