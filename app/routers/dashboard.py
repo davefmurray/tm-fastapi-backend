@@ -694,8 +694,14 @@ async def get_live_authorized_work(
         job_count = 0
 
         ro_details = []
+        processed_ro_ids = set()  # Deduplicate ROs across boards
 
         for ro in all_ros:
+            # Skip if we already processed this RO from another board
+            ro_id = ro.get("id")
+            if ro_id in processed_ro_ids:
+                continue
+            processed_ro_ids.add(ro_id)
             try:
                 estimate = await tm.get(f"/api/repair-order/{ro['id']}/estimate")
 
