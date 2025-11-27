@@ -218,49 +218,74 @@ async def audit_single_ro(tm, ro_summary: dict, audit_date) -> dict:
         }
 
         # Compare with reported values
-        estimate_subtotal = estimate.get("subtotal", 0)
-        estimate_total = estimate.get("total", 0)
+        # NOTE: TM often returns subtotal=null, so use total or authorizedTotal as fallback
+        estimate_subtotal = estimate.get("subtotal") or 0
+        estimate_total = estimate.get("total") or 0
+        estimate_authorized = estimate.get("authorizedTotal") or 0
+
+        # Use the best available comparison value
+        # Priority: subtotal > total > authorizedTotal
+        comparison_value = estimate_subtotal if estimate_subtotal else estimate_total
+        comparison_field = "subtotal" if estimate_subtotal else "total"
 
         audit_record["comparison"]["subtotal"] = {
             "calculated": cents_to_dollars(subtotal_calc),
-            "estimate_reported": cents_to_dollars(estimate_subtotal),
-            "difference": cents_to_dollars(subtotal_calc - estimate_subtotal),
-            "match": abs(subtotal_calc - estimate_subtotal) < 100  # Within $1
+            "estimate_subtotal": cents_to_dollars(estimate_subtotal),
+            "estimate_total": cents_to_dollars(estimate_total),
+            "estimate_authorized": cents_to_dollars(estimate_authorized),
+            "compared_against": comparison_field,
+            "difference": cents_to_dollars(subtotal_calc - comparison_value),
+            "match": abs(subtotal_calc - comparison_value) < 100  # Within $1
         }
 
-        if not audit_record["comparison"]["subtotal"]["match"]:
+        # Only flag discrepancy if we have a valid comparison and it doesn't match
+        if comparison_value > 0 and not audit_record["comparison"]["subtotal"]["match"]:
             audit_record["discrepancies"].append({
                 "type": "sum_mismatches",
-                "field": "subtotal",
+                "field": comparison_field,
                 "calculated": cents_to_dollars(subtotal_calc),
-                "reported": cents_to_dollars(estimate_subtotal),
-                "difference": cents_to_dollars(subtotal_calc - estimate_subtotal),
-                "suspected_cause": "Line item sum doesn't match estimate subtotal"
+                "reported": cents_to_dollars(comparison_value),
+                "difference": cents_to_dollars(subtotal_calc - comparison_value),
+                "suspected_cause": f"Line item sum doesn't match estimate {comparison_field}"
             })
 
     except Exception as e:
         audit_record["data_sources"]["estimate"] = {"error": str(e)}
 
     # Source 3: Profit/Labor endpoint
+    # NOTE: This endpoint returns nested objects, not flat fields:
+    # - labor_profit: { hours, retail, cost, profit, margin }
+    # - parts_profit: { quantity, retail, cost, profit, margin }
+    # - total_profit: { retail, cost, profit, margin }
     try:
         profit_labor = await tm.get(f"/api/repair-order/{ro_id}/profit/labor")
+
+        # Extract from nested structure
+        labor_obj = profit_labor.get("labor_profit", {}) or {}
+        parts_obj = profit_labor.get("parts_profit", {}) or {}
+        total_obj = profit_labor.get("total_profit", {}) or {}
+
         audit_record["data_sources"]["profit_labor"] = {
-            "labor_revenue": profit_labor.get("laborRevenue"),
-            "labor_cost": profit_labor.get("laborCost"),
-            "labor_profit": profit_labor.get("laborProfit"),
-            "parts_revenue": profit_labor.get("partsRevenue"),
-            "parts_cost": profit_labor.get("partsCost"),
-            "parts_profit": profit_labor.get("partsProfit"),
-            "total_profit": profit_labor.get("totalProfit")
+            "labor_revenue": labor_obj.get("retail"),
+            "labor_cost": labor_obj.get("cost"),
+            "labor_profit": labor_obj.get("profit"),
+            "labor_margin": labor_obj.get("margin"),
+            "parts_revenue": parts_obj.get("retail"),
+            "parts_cost": parts_obj.get("cost"),
+            "parts_profit": parts_obj.get("profit"),
+            "parts_margin": parts_obj.get("margin"),
+            "total_revenue": total_obj.get("retail"),
+            "total_cost": total_obj.get("cost"),
+            "total_profit": total_obj.get("profit"),
+            "total_margin": total_obj.get("margin")
         }
 
         # Compare profit/labor values with our calculations
         if "calculated_values" in audit_record:
             calc = audit_record["calculated_values"]
-            pl = profit_labor
 
-            # Check labor revenue
-            labor_rev_reported = pl.get("laborRevenue", 0)
+            # Check labor revenue (from nested labor_profit.retail)
+            labor_rev_reported = labor_obj.get("retail") or 0
             labor_rev_calc = int(calc["labor_total"] * 100)
             if abs(labor_rev_reported - labor_rev_calc) > 100:
                 audit_record["discrepancies"].append({
@@ -272,8 +297,8 @@ async def audit_single_ro(tm, ro_summary: dict, audit_date) -> dict:
                     "suspected_cause": "profit/labor endpoint disagrees with line item sum"
                 })
 
-            # Check parts revenue
-            parts_rev_reported = pl.get("partsRevenue", 0)
+            # Check parts revenue (from nested parts_profit.retail)
+            parts_rev_reported = parts_obj.get("retail") or 0
             parts_rev_calc = int(calc["parts_total"] * 100)
             if abs(parts_rev_reported - parts_rev_calc) > 100:
                 audit_record["discrepancies"].append({
