@@ -189,6 +189,9 @@ class ROTrueGP:
     jobs: List[JobGP] = field(default_factory=list)
     authorized_job_count: int = 0
     total_job_count: int = 0
+    # Tier 6: Advisor tracking
+    advisor_id: Optional[int] = None
+    advisor_name: Optional[str] = None
     # Meta
     calculation_notes: List[str] = field(default_factory=list)
 
@@ -624,6 +627,13 @@ def calculate_ro_true_gp(
     if vehicle:
         vehicle_description = f"{vehicle.get('year', '')} {vehicle.get('make', '')} {vehicle.get('model', '')}".strip()
 
+    # Tier 6: Extract service advisor info
+    service_writer = estimate.get('serviceWriter', {})
+    advisor_id = service_writer.get('id') if service_writer else None
+    advisor_name = None
+    if service_writer:
+        advisor_name = f"{service_writer.get('firstName', '')} {service_writer.get('lastName', '')}".strip() or None
+
     notes = []
     job_results = []
 
@@ -734,6 +744,8 @@ def calculate_ro_true_gp(
         jobs=job_results,
         authorized_job_count=authorized_count,
         total_job_count=total_job_count,
+        advisor_id=advisor_id,
+        advisor_name=advisor_name,
         calculation_notes=notes
     )
 
@@ -1116,3 +1128,70 @@ def aggregate_labor_efficiency(ro_results: List[ROTrueGP]) -> LaborEfficiency:
         by_rate_source=by_source,
         total_labor_items=total_items
     )
+
+
+def aggregate_advisor_performance(ro_results: List[ROTrueGP]) -> Dict[int, AdvisorPerformance]:
+    """
+    Tier 6: Aggregate service advisor performance from RO calculations.
+
+    Tracks sales, GP, and volume metrics per advisor.
+    Returns dict keyed by advisor_id.
+    """
+    advisor_data: Dict[int, Dict] = {}
+
+    for ro in ro_results:
+        # Get advisor info from RO
+        advisor_id = ro.advisor_id or 0
+        advisor_name = ro.advisor_name or "Unassigned"
+
+        if advisor_id not in advisor_data:
+            advisor_data[advisor_id] = {
+                'name': advisor_name,
+                'total_sales': 0,
+                'total_cost': 0,
+                'gross_profit': 0,
+                'ro_count': 0,
+                'job_count': 0,
+                'parts_sales': 0,
+                'labor_sales': 0,
+                'sublet_sales': 0,
+                'fee_sales': 0
+            }
+
+        data = advisor_data[advisor_id]
+        data['total_sales'] += ro.total_retail
+        data['total_cost'] += ro.total_cost
+        data['gross_profit'] += ro.gross_profit
+        data['ro_count'] += 1
+        data['job_count'] += ro.authorized_job_count
+        data['parts_sales'] += ro.parts_retail
+        data['labor_sales'] += ro.labor_retail
+        data['sublet_sales'] += ro.sublet_retail
+        data['fee_sales'] += ro.fee_breakdown.total_fees if ro.fee_breakdown else 0
+
+    # Convert to AdvisorPerformance objects
+    result: Dict[int, AdvisorPerformance] = {}
+
+    for advisor_id, data in advisor_data.items():
+        gp_pct = (data['gross_profit'] / data['total_sales'] * 100) if data['total_sales'] > 0 else 0
+        aro = data['total_sales'] // data['ro_count'] if data['ro_count'] > 0 else 0
+        avg_job = data['total_sales'] // data['job_count'] if data['job_count'] > 0 else 0
+
+        result[advisor_id] = AdvisorPerformance(
+            advisor_id=advisor_id,
+            advisor_name=data['name'],
+            total_sales=data['total_sales'],
+            total_cost=data['total_cost'],
+            gross_profit=data['gross_profit'],
+            gp_percentage=round(gp_pct, 2),
+            ro_count=data['ro_count'],
+            job_count=data['job_count'],
+            aro=aro,
+            avg_job_value=avg_job,
+            parts_sales=data['parts_sales'],
+            labor_sales=data['labor_sales'],
+            sublet_sales=data['sublet_sales'],
+            fee_sales=data['fee_sales']
+        )
+
+    return result

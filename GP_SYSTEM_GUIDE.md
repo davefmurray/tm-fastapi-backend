@@ -11,6 +11,7 @@ The True GP system provides **accurate gross profit calculations** that fix know
 | **Tier 3** | Advanced analytics (tech performance, parts margin, variance) |
 | **Tier 4** | Database persistence (historical tracking, trend analysis) |
 | **Tier 5** | Real-time dashboard (WebSocket streaming, live updates) |
+| **Tier 6** | Service advisor tracking (sales, GP, goals) |
 
 ---
 
@@ -33,6 +34,9 @@ The True GP system provides **accurate gross profit calculations** that fix know
 | **Connect to live dashboard** | `WS /api/realtime/ws` |
 | **Start auto-refresh** | `POST /api/realtime/start` |
 | **Send GP alert** | `POST /api/realtime/alert` |
+| **Get advisor performance** | `GET /api/advisors/performance` |
+| **Get advisor leaderboard** | `GET /api/advisors/leaderboard` |
+| **Check advisor vs goals** | `GET /api/advisors/goals` |
 
 ---
 
@@ -1279,3 +1283,297 @@ Check service status and connected clients.
 </body>
 </html>
 ```
+
+---
+
+## Tier 6: Service Advisor Tracking
+
+Tier 6 adds **advisor-level metrics** for tracking sales performance:
+- Sales, GP, and volume per advisor
+- Leaderboards with customizable sorting
+- Goal tracking and progress
+- Advisor comparison tools
+
+### 18. Advisor Performance
+
+**`GET /api/advisors/performance?days=30`**
+
+Get all advisor metrics for the period.
+
+```json
+{
+  "date_range": {
+    "start": "2025-10-27",
+    "end": "2025-11-26"
+  },
+  "advisors": [
+    {
+      "advisor_id": 12345,
+      "advisor_name": "Sarah Johnson",
+      "total_sales": 125000.00,
+      "total_cost": 52500.00,
+      "gross_profit": 72500.00,
+      "gp_percentage": 58.0,
+      "ro_count": 85,
+      "job_count": 142,
+      "aro": 1470.59,
+      "avg_job_value": 880.28,
+      "category_breakdown": {
+        "parts": 62500.00,
+        "labor": 50000.00,
+        "sublet": 10000.00,
+        "fees": 2500.00
+      }
+    }
+  ],
+  "summary": {
+    "advisor_count": 3,
+    "total_sales": 350000.00,
+    "total_gp": 203000.00,
+    "avg_gp_pct": 58.0,
+    "ros_analyzed": 240
+  }
+}
+```
+
+---
+
+### 19. Advisor Leaderboard
+
+**`GET /api/advisors/leaderboard?days=7&sort_by=sales`**
+
+Ranked advisor list. Sort options: `sales`, `gp`, `gp_pct`, `aro`, `ro_count`
+
+```json
+{
+  "date_range": {
+    "start": "2025-11-19",
+    "end": "2025-11-26"
+  },
+  "leaderboard": [
+    {
+      "rank": 1,
+      "advisor_id": 12345,
+      "advisor_name": "Sarah Johnson",
+      "total_sales": 45000.00,
+      "gross_profit": 26100.00,
+      "gp_percentage": 58.0,
+      "aro": 1500.00,
+      "ro_count": 30,
+      "job_count": 48
+    },
+    {
+      "rank": 2,
+      "advisor_id": 67890,
+      "advisor_name": "Mike Davis",
+      "total_sales": 38000.00,
+      "gross_profit": 21280.00,
+      "gp_percentage": 56.0,
+      "aro": 1357.14,
+      "ro_count": 28,
+      "job_count": 42
+    }
+  ],
+  "sort_by": "sales"
+}
+```
+
+---
+
+### 20. Single Advisor Detail
+
+**`GET /api/advisors/advisor/12345?days=30`**
+
+Detailed performance with RO breakdown for one advisor.
+
+```json
+{
+  "advisor_id": 12345,
+  "advisor_name": "Sarah Johnson",
+  "date_range": {
+    "start": "2025-10-27",
+    "end": "2025-11-26"
+  },
+  "summary": {
+    "total_sales": 125000.00,
+    "gross_profit": 72500.00,
+    "gp_percentage": 58.0,
+    "ro_count": 85,
+    "job_count": 142,
+    "aro": 1470.59
+  },
+  "category_breakdown": {
+    "parts": 62500.00,
+    "labor": 50000.00,
+    "sublet": 10000.00,
+    "fees": 2500.00
+  },
+  "ros": [
+    {
+      "ro_id": 24750,
+      "ro_number": 24750,
+      "customer": "John Smith",
+      "vehicle": "2022 Toyota Camry",
+      "total": 1850.00,
+      "gp": 1073.00,
+      "gp_pct": 58.0,
+      "jobs": 3
+    }
+  ]
+}
+```
+
+---
+
+### 21. Compare Advisors
+
+**`GET /api/advisors/compare?advisor_ids=12345,67890&days=30`**
+
+Side-by-side advisor comparison.
+
+```json
+{
+  "date_range": {
+    "start": "2025-10-27",
+    "end": "2025-11-26"
+  },
+  "comparison": [
+    {
+      "advisor_id": 12345,
+      "advisor_name": "Sarah Johnson",
+      "total_sales": 125000.00,
+      "gross_profit": 72500.00,
+      "gp_percentage": 58.0,
+      "ro_count": 85,
+      "aro": 1470.59,
+      "avg_job_value": 880.28
+    },
+    {
+      "advisor_id": 67890,
+      "advisor_name": "Mike Davis",
+      "total_sales": 98000.00,
+      "gross_profit": 54880.00,
+      "gp_percentage": 56.0,
+      "ro_count": 72,
+      "aro": 1361.11,
+      "avg_job_value": 816.67
+    }
+  ]
+}
+```
+
+---
+
+### 22. Goal Tracking
+
+**`GET /api/advisors/goals?sales_goal=50000&gp_pct_goal=55&days=30`**
+
+Check advisor progress against goals.
+
+```json
+{
+  "date_range": {
+    "start": "2025-10-27",
+    "end": "2025-11-26"
+  },
+  "goals": {
+    "sales": 50000.0,
+    "gp": null,
+    "gp_pct": 55.0,
+    "ro_count": null
+  },
+  "advisors": [
+    {
+      "advisor_id": 12345,
+      "advisor_name": "Sarah Johnson",
+      "current": {
+        "sales": 125000.00,
+        "gp": 72500.00,
+        "gp_pct": 58.0,
+        "ro_count": 85
+      },
+      "progress": {
+        "sales": {
+          "goal": 50000.0,
+          "current": 125000.00,
+          "percent": 250.0,
+          "met": true
+        },
+        "gp_pct": {
+          "goal": 55.0,
+          "current": 58.0,
+          "met": true
+        }
+      }
+    }
+  ]
+}
+```
+
+---
+
+## Dashboard Integration: Advisor Cards
+
+```html
+<div id="advisor-cards"></div>
+
+<script>
+async function loadAdvisorCards() {
+  const res = await fetch('/api/advisors/performance?days=7');
+  const data = await res.json();
+
+  const container = document.getElementById('advisor-cards');
+  container.innerHTML = '';
+
+  data.advisors.forEach(adv => {
+    container.innerHTML += `
+      <div class="advisor-card">
+        <h3>${adv.advisor_name}</h3>
+        <div class="metric">
+          <span class="label">Sales</span>
+          <span class="value">$${adv.total_sales.toLocaleString()}</span>
+        </div>
+        <div class="metric">
+          <span class="label">GP%</span>
+          <span class="value">${adv.gp_percentage}%</span>
+        </div>
+        <div class="metric">
+          <span class="label">ROs</span>
+          <span class="value">${adv.ro_count}</span>
+        </div>
+        <div class="metric">
+          <span class="label">ARO</span>
+          <span class="value">$${adv.aro.toLocaleString()}</span>
+        </div>
+      </div>
+    `;
+  });
+}
+</script>
+```
+
+---
+
+## Final Summary (All Tiers)
+
+| Endpoint | Use For | Tier |
+|----------|---------|------|
+| `/api/dashboard/true-metrics` | Main KPI dashboard | 1-2 |
+| `/api/analytics/tech-performance` | Tech leaderboard | 3 |
+| `/api/analytics/parts-margin` | Parts profitability | 3 |
+| `/api/analytics/labor-efficiency` | Labor rate analysis | 3 |
+| `/api/analytics/variance-analysis` | TM vs True differences | 3 |
+| `/api/analytics/full-analysis` | Comprehensive reports | 3 |
+| `POST /api/history/snapshot/daily` | Store daily snapshot | 4 |
+| `/api/history/snapshots/daily` | Historical snapshots | 4 |
+| `/api/history/trends` | Trend analysis | 4 |
+| `/api/history/ro/{ro_id}` | RO history | 4 |
+| `/api/history/compare/periods` | Period comparison | 4 |
+| `WS /api/realtime/ws` | Live WebSocket | 5 |
+| `POST /api/realtime/start` | Start auto-refresh | 5 |
+| `POST /api/realtime/alert` | Send GP alert | 5 |
+| `/api/advisors/performance` | Advisor metrics | 6 |
+| `/api/advisors/leaderboard` | Advisor rankings | 6 |
+| `/api/advisors/advisor/{id}` | Single advisor detail | 6 |
+| `/api/advisors/compare` | Advisor comparison | 6 |
+| `/api/advisors/goals` | Goal tracking | 6 |
