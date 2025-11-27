@@ -3,268 +3,1330 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TM Live Dashboard - Authorized Sales</title>
+    <title>True GP Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+        * { font-family: 'Inter', sans-serif; }
+
+        :root {
+            --accent: #10b981;
+            --accent-dark: #059669;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --bg-hover: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border: #334155;
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f5f5f5;
-            padding: 20px;
+            background: linear-gradient(135deg, var(--bg-dark) 0%, #1a1f36 100%);
+            min-height: 100vh;
         }
 
-        .header {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-
-        h1 {
-            font-size: 24px;
-            color: #333;
-            margin-bottom: 5px;
-        }
-
-        .subtitle {
-            color: #666;
-            font-size: 14px;
-        }
-
-        .period-section {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-
-        .period-title {
-            font-size: 18px;
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #0D4A80;
-        }
-
-        .metrics-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 15px;
+        .glass-card {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(51, 65, 85, 0.5);
         }
 
         .metric-card {
-            padding: 15px;
-            background: #f9f9f9;
-            border-radius: 6px;
-            border-left: 4px solid #0D4A80;
+            background: linear-gradient(145deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.9) 100%);
+            border: 1px solid rgba(51, 65, 85, 0.5);
         }
 
-        .metric-label {
-            font-size: 12px;
-            color: #666;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 5px;
+        .metric-card:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(16, 185, 129, 0.15);
         }
 
-        .metric-value {
-            font-size: 28px;
-            font-weight: bold;
-            color: #333;
+        .pulse-green { animation: pulse-green 2s infinite; }
+        @keyframes pulse-green {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            50% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
         }
 
-        .metric-value.currency::before {
-            content: '$';
-            font-size: 20px;
-            color: #666;
+        .fade-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
-        .metric-value.percentage::after {
-            content: '%';
-            font-size: 20px;
-            color: #666;
+        .tab-active {
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+            color: white;
         }
 
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #666;
+        .progress-bar {
+            background: linear-gradient(90deg, var(--accent) 0%, #34d399 100%);
+            transition: width 0.5s ease-out;
         }
 
-        .error {
-            background: #fee;
-            color: #c33;
-            padding: 15px;
-            border-radius: 6px;
-            margin: 10px 0;
+        .leaderboard-row:nth-child(1) .rank-badge { background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%); }
+        .leaderboard-row:nth-child(2) .rank-badge { background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%); }
+        .leaderboard-row:nth-child(3) .rank-badge { background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%); }
+
+        .trend-up { color: #10b981; }
+        .trend-down { color: #ef4444; }
+
+        .alert-critical { border-left: 4px solid #ef4444; background: rgba(239, 68, 68, 0.1); }
+        .alert-warning { border-left: 4px solid #f59e0b; background: rgba(245, 158, 11, 0.1); }
+        .alert-info { border-left: 4px solid #3b82f6; background: rgba(59, 130, 246, 0.1); }
+
+        .scrollbar-thin::-webkit-scrollbar { width: 6px; }
+        .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+        input[type="date"] { color-scheme: dark; }
+
+        .preset-active { background: var(--accent); color: white !important; }
+
+        .shimmer {
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
         }
 
-        .refresh-info {
-            text-align: center;
-            color: #999;
-            font-size: 12px;
-            margin-top: 20px;
+        .refresh-spin { animation: spin 1s linear infinite; }
+
+        .modal-backdrop {
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
         }
 
-        .loading-spinner {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #0D4A80;
+        .spinner {
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
             border-radius: 50%;
+            width: 24px;
+            height: 24px;
             animation: spin 1s linear infinite;
         }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
-<body>
-    <div class="header">
-        <h1>📊 Tekmetric Live Dashboard</h1>
-        <p class="subtitle">Authorized Sales Metrics - Accurate Calculations</p>
-    </div>
+<body class="text-slate-100">
+    <!-- Header -->
+    <header class="glass-card sticky top-0 z-50 border-b border-slate-700">
+        <div class="max-w-7xl mx-auto px-4 py-3">
+            <div class="flex items-center justify-between flex-wrap gap-4">
+                <!-- Logo & Title -->
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center">
+                        <i data-lucide="gauge" class="w-6 h-6 text-white"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-lg font-bold text-white">True GP Dashboard</h1>
+                        <p class="text-xs text-slate-400">Real-time shop performance</p>
+                    </div>
+                </div>
 
-    <div id="dashboard-container">
-        <div class="loading">
-            <div class="loading-spinner"></div>
-            <p>Loading dashboard...</p>
+                <!-- View Tabs -->
+                <div class="flex bg-slate-800 rounded-lg p-1">
+                    <button onclick="switchView('owner')" id="tab-owner" class="tab-active px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2">
+                        <i data-lucide="crown" class="w-4 h-4"></i>
+                        Owner
+                    </button>
+                    <button onclick="switchView('advisor')" id="tab-advisor" class="px-4 py-2 rounded-md text-sm font-medium text-slate-400 hover:text-white transition-all flex items-center gap-2">
+                        <i data-lucide="users" class="w-4 h-4"></i>
+                        Advisors
+                    </button>
+                    <button onclick="switchView('tech')" id="tab-tech" class="px-4 py-2 rounded-md text-sm font-medium text-slate-400 hover:text-white transition-all flex items-center gap-2">
+                        <i data-lucide="wrench" class="w-4 h-4"></i>
+                        Techs
+                    </button>
+                </div>
+
+                <!-- Filters & Status -->
+                <div class="flex items-center gap-4 flex-wrap">
+                    <!-- Quick Presets -->
+                    <div class="flex bg-slate-800 rounded-lg p-0.5">
+                        <button onclick="setDatePreset('today')" class="preset-btn px-3 py-1.5 rounded-md text-xs font-medium text-slate-400 hover:text-white transition-all">Today</button>
+                        <button onclick="setDatePreset('week')" class="preset-btn px-3 py-1.5 rounded-md text-xs font-medium text-slate-400 hover:text-white transition-all">Week</button>
+                        <button onclick="setDatePreset('month')" class="preset-btn preset-active px-3 py-1.5 rounded-md text-xs font-medium text-slate-400 hover:text-white transition-all">Month</button>
+                        <button onclick="setDatePreset('ytd')" class="preset-btn px-3 py-1.5 rounded-md text-xs font-medium text-slate-400 hover:text-white transition-all">YTD</button>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="date" id="start-date" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500">
+                        <span class="text-slate-500">to</span>
+                        <input type="date" id="end-date" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500">
+                        <button onclick="refreshData()" id="refresh-btn" class="bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2">
+                            <i data-lucide="refresh-cw" class="w-4 h-4" id="refresh-icon"></i>
+                            Refresh
+                        </button>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div id="ws-status" class="flex items-center gap-2">
+                            <div class="w-2 h-2 rounded-full bg-slate-500"></div>
+                            <span class="text-xs text-slate-400">Offline</span>
+                        </div>
+                        <span id="last-updated" class="text-xs text-slate-500 hidden">Updated: --</span>
+                    </div>
+                </div>
+            </div>
         </div>
-    </div>
+    </header>
 
-    <div class="refresh-info">
-        Auto-refreshes every 60 seconds | Last updated: <span id="last-update">Never</span>
-    </div>
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 py-6">
+        <!-- Loading State -->
+        <div id="loading-state" class="hidden flex flex-col items-center justify-center py-20">
+            <div class="spinner mb-4"></div>
+            <p class="text-slate-400">Loading dashboard data...</p>
+        </div>
 
-    <script>
-        const API_BASE = 'https://tm-fastapi-backend-production.up.railway.app';
-
-        function getDateRange(period) {
-            // Use UTC-5 (EST) to match shop timezone
-            const now = new Date();
-            const offset = -5 * 60; // EST offset in minutes
-            const estTime = new Date(now.getTime() + (offset + now.getTimezoneOffset()) * 60000);
-
-            let start, end;
-
-            if (period === 'day') {
-                // Today in EST
-                start = end = estTime.toISOString().split('T')[0];
-            } else if (period === 'week') {
-                // Start of week (Sunday) in EST
-                const dayOfWeek = estTime.getDay();
-                const weekStart = new Date(estTime);
-                weekStart.setDate(estTime.getDate() - dayOfWeek);
-                start = weekStart.toISOString().split('T')[0];
-                end = estTime.toISOString().split('T')[0];
-            } else if (period === 'month') {
-                // Start of month in EST
-                start = new Date(estTime.getFullYear(), estTime.getMonth(), 1).toISOString().split('T')[0];
-                end = estTime.toISOString().split('T')[0];
-            }
-
-            console.log(`${period}: ${start} to ${end}`);
-            return { start, end };
-        }
-
-        async function fetchMetrics(period) {
-            const { start, end } = getDateRange(period);
-
-            const response = await fetch(
-                `${API_BASE}/api/dashboard/accurate-authorized?start=${start}&end=${end}`
-            );
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            return response.json();
-        }
-
-        function formatCurrency(value) {
-            return value.toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-            });
-        }
-
-        function renderMetrics(period, data) {
-            return `
-                <div class="period-section">
-                    <div class="period-title">${period.toUpperCase()}</div>
-                    <div class="metrics-grid">
-                        <div class="metric-card">
-                            <div class="metric-label">Sales</div>
-                            <div class="metric-value currency">${formatCurrency(data.sales)}</div>
+        <!-- Owner View -->
+        <div id="view-owner" class="fade-in">
+            <!-- KPI Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div class="metric-card rounded-xl p-5 cursor-pointer transition-all" onclick="showDrilldown('sales')">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-slate-400 text-sm font-medium">Total Sales</span>
+                        <div class="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                            <i data-lucide="dollar-sign" class="w-5 h-5 text-emerald-500"></i>
                         </div>
-                        <div class="metric-card">
-                            <div class="metric-label">GP$</div>
-                            <div class="metric-value currency">${formatCurrency(data.gp_dollars)}</div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-label">GP%</div>
-                            <div class="metric-value percentage">${data.gp_percentage}</div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-label">ARO</div>
-                            <div class="metric-value currency">${formatCurrency(data.aro)}</div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-label">Car Count</div>
-                            <div class="metric-value">${data.car_count}</div>
+                    </div>
+                    <div class="flex items-end justify-between">
+                        <div>
+                            <p id="kpi-sales" class="text-3xl font-bold text-white">$0</p>
+                            <p id="kpi-sales-change" class="text-sm text-emerald-500 flex items-center gap-1 mt-1">
+                                <i data-lucide="trending-up" class="w-4 h-4"></i>
+                                <span>Loading...</span>
+                            </p>
                         </div>
                     </div>
                 </div>
-            `;
+
+                <div class="metric-card rounded-xl p-5 cursor-pointer transition-all" onclick="showDrilldown('gp')">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-slate-400 text-sm font-medium">Gross Profit</span>
+                        <div class="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                            <i data-lucide="trending-up" class="w-5 h-5 text-blue-500"></i>
+                        </div>
+                    </div>
+                    <div class="flex items-end justify-between">
+                        <div>
+                            <p id="kpi-gp" class="text-3xl font-bold text-white">$0</p>
+                            <p id="kpi-gp-pct" class="text-lg text-slate-400 font-medium mt-1">0% margin</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metric-card rounded-xl p-5 cursor-pointer transition-all" onclick="showDrilldown('aro')">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-slate-400 text-sm font-medium">Average RO</span>
+                        <div class="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                            <i data-lucide="receipt" class="w-5 h-5 text-purple-500"></i>
+                        </div>
+                    </div>
+                    <div>
+                        <p id="kpi-aro" class="text-3xl font-bold text-white">$0</p>
+                        <p id="kpi-car-count" class="text-sm text-slate-400 mt-1">0 cars</p>
+                    </div>
+                </div>
+
+                <div class="metric-card rounded-xl p-5 cursor-pointer transition-all" onclick="showDrilldown('labor')">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-slate-400 text-sm font-medium">Labor GP/Hour</span>
+                        <div class="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                            <i data-lucide="clock" class="w-5 h-5 text-amber-500"></i>
+                        </div>
+                    </div>
+                    <div>
+                        <p id="kpi-gp-per-hour" class="text-3xl font-bold text-white">$0</p>
+                        <p id="kpi-hours" class="text-sm text-slate-400 mt-1">0 hours billed</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+                <!-- Category Breakdown -->
+                <div class="glass-card rounded-xl p-5">
+                    <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        <i data-lucide="pie-chart" class="w-5 h-5 text-emerald-500"></i>
+                        Profit by Category
+                    </h3>
+                    <div class="h-64">
+                        <canvas id="chart-category"></canvas>
+                    </div>
+                </div>
+
+                <!-- Trend Chart -->
+                <div class="glass-card rounded-xl p-5 lg:col-span-2">
+                    <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        <i data-lucide="line-chart" class="w-5 h-5 text-emerald-500"></i>
+                        7-Day Trend
+                    </h3>
+                    <div class="h-64">
+                        <canvas id="chart-trend"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Row: Alerts + Insights -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <!-- Alerts -->
+                <div class="glass-card rounded-xl p-5">
+                    <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        <i data-lucide="bell" class="w-5 h-5 text-amber-500"></i>
+                        Alerts & Notifications
+                    </h3>
+                    <div id="alerts-container" class="space-y-3 max-h-64 overflow-y-auto scrollbar-thin">
+                        <div class="alert-info rounded-lg p-4">
+                            <p class="text-sm text-slate-300">Connect to real-time updates for live alerts</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Insights -->
+                <div class="glass-card rounded-xl p-5">
+                    <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        <i data-lucide="lightbulb" class="w-5 h-5 text-amber-500"></i>
+                        Quick Insights
+                    </h3>
+                    <div id="insights-container" class="space-y-3">
+                        <div class="flex items-center gap-3 p-3 bg-slate-800/50 rounded-lg">
+                            <div class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                                <i data-lucide="calendar" class="w-4 h-4 text-emerald-500"></i>
+                            </div>
+                            <div>
+                                <p id="insight-best-day" class="text-sm text-white font-medium">Loading best day...</p>
+                                <p class="text-xs text-slate-400">Best performing day</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3 p-3 bg-slate-800/50 rounded-lg">
+                            <div class="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                                <i data-lucide="target" class="w-4 h-4 text-blue-500"></i>
+                            </div>
+                            <div>
+                                <p id="insight-forecast" class="text-sm text-white font-medium">Loading forecast...</p>
+                                <p class="text-xs text-slate-400">Monthly projection</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3 p-3 bg-slate-800/50 rounded-lg">
+                            <div class="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                                <i data-lucide="zap" class="w-4 h-4 text-purple-500"></i>
+                            </div>
+                            <div>
+                                <p id="insight-trend" class="text-sm text-white font-medium">Loading trend...</p>
+                                <p class="text-xs text-slate-400">Momentum signal</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Advisor View -->
+        <div id="view-advisor" class="hidden fade-in">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Leaderboard -->
+                <div class="lg:col-span-2 glass-card rounded-xl p-5">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                            <i data-lucide="trophy" class="w-5 h-5 text-amber-500"></i>
+                            Advisor Leaderboard
+                        </h3>
+                        <select id="leaderboard-sort" onchange="updateLeaderboard()" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm">
+                            <option value="sales">Sort by Sales</option>
+                            <option value="gp">Sort by GP</option>
+                            <option value="gp_pct">Sort by GP%</option>
+                            <option value="aro">Sort by ARO</option>
+                            <option value="ro_count">Sort by Car Count</option>
+                        </select>
+                    </div>
+                    <div id="leaderboard-container" class="space-y-2">
+                        <p class="text-slate-400 text-center py-8">Loading advisors...</p>
+                    </div>
+                </div>
+
+                <!-- Goal Tracker -->
+                <div class="glass-card rounded-xl p-5">
+                    <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        <i data-lucide="target" class="w-5 h-5 text-emerald-500"></i>
+                        Goal Progress
+                    </h3>
+                    <div class="mb-4">
+                        <label class="text-xs text-slate-400 mb-1 block">Monthly Sales Goal</label>
+                        <input type="number" id="goal-sales" value="50000" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm" onchange="updateGoals()">
+                    </div>
+                    <div id="goals-container" class="space-y-4">
+                        <p class="text-slate-400 text-center py-4">Set a goal to track progress</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Advisor Details (click to expand) -->
+            <div id="advisor-detail" class="hidden mt-6 glass-card rounded-xl p-5 fade-in">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 id="advisor-detail-name" class="text-lg font-semibold text-white">Advisor Details</h3>
+                    <button onclick="hideAdvisorDetail()" class="text-slate-400 hover:text-white">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+                <div id="advisor-detail-content">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Tech View -->
+        <div id="view-tech" class="hidden fade-in">
+            <!-- Tech KPIs -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div class="metric-card rounded-xl p-5">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-slate-400 text-sm">Total Hours</span>
+                        <i data-lucide="clock" class="w-5 h-5 text-blue-500"></i>
+                    </div>
+                    <p id="tech-kpi-hours" class="text-2xl font-bold text-white">0</p>
+                </div>
+                <div class="metric-card rounded-xl p-5">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-slate-400 text-sm">Labor Revenue</span>
+                        <i data-lucide="dollar-sign" class="w-5 h-5 text-emerald-500"></i>
+                    </div>
+                    <p id="tech-kpi-revenue" class="text-2xl font-bold text-white">$0</p>
+                </div>
+                <div class="metric-card rounded-xl p-5">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-slate-400 text-sm">Labor Profit</span>
+                        <i data-lucide="trending-up" class="w-5 h-5 text-purple-500"></i>
+                    </div>
+                    <p id="tech-kpi-profit" class="text-2xl font-bold text-white">$0</p>
+                </div>
+                <div class="metric-card rounded-xl p-5">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-slate-400 text-sm">GP/Hour</span>
+                        <i data-lucide="zap" class="w-5 h-5 text-amber-500"></i>
+                    </div>
+                    <p id="tech-kpi-gp-hour" class="text-2xl font-bold text-white">$0</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Tech Performance Table -->
+                <div class="lg:col-span-2 glass-card rounded-xl p-5">
+                    <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        <i data-lucide="wrench" class="w-5 h-5 text-emerald-500"></i>
+                        Technician Performance
+                    </h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead>
+                                <tr class="text-left text-xs text-slate-400 border-b border-slate-700">
+                                    <th class="pb-3 font-medium">Technician</th>
+                                    <th class="pb-3 font-medium text-right">Hours</th>
+                                    <th class="pb-3 font-medium text-right">Revenue</th>
+                                    <th class="pb-3 font-medium text-right">Profit</th>
+                                    <th class="pb-3 font-medium text-right">GP/Hr</th>
+                                    <th class="pb-3 font-medium text-right">Margin</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tech-table-body" class="text-sm">
+                                <tr><td colspan="6" class="py-8 text-center text-slate-400">Loading technicians...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Efficiency Chart -->
+                <div class="glass-card rounded-xl p-5">
+                    <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        <i data-lucide="bar-chart-3" class="w-5 h-5 text-emerald-500"></i>
+                        Rate Analysis
+                    </h3>
+                    <div class="h-64">
+                        <canvas id="chart-rates"></canvas>
+                    </div>
+                    <div id="rate-stats" class="mt-4 space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Avg Retail Rate</span>
+                            <span id="stat-retail-rate" class="text-white font-medium">$0/hr</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Avg Tech Cost</span>
+                            <span id="stat-cost-rate" class="text-white font-medium">$0/hr</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Effective Spread</span>
+                            <span id="stat-spread" class="text-emerald-500 font-medium">$0/hr</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="max-w-7xl mx-auto px-4 py-6 mt-8 border-t border-slate-800">
+        <div class="flex items-center justify-between text-xs text-slate-500">
+            <p>True GP Dashboard v1.0 • Powered by TM FastAPI Backend</p>
+            <p>Using corrected GP calculations • Not TM aggregates</p>
+        </div>
+    </footer>
+
+    <!-- Drill-down Modal -->
+    <div id="modal-drilldown" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="modal-backdrop absolute inset-0" onclick="closeDrilldown()"></div>
+        <div class="glass-card rounded-2xl p-6 max-w-4xl w-full max-h-[80vh] overflow-y-auto relative z-10 fade-in">
+            <div class="flex items-center justify-between mb-6">
+                <h3 id="modal-title" class="text-xl font-bold text-white">Details</h3>
+                <button onclick="closeDrilldown()" class="text-slate-400 hover:text-white p-2">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            <div id="modal-content">
+                <!-- Populated dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // =============================================================================
+        // CONFIGURATION
+        // =============================================================================
+        const API_BASE = window.location.origin + '/api';
+        let currentView = 'owner';
+        let wsConnection = null;
+        let charts = {};
+        let currentData = {};
+
+        // =============================================================================
+        // INITIALIZATION
+        // =============================================================================
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            initializeDates();
+            initializeCharts();
+            refreshData();
+            connectWebSocket();
+        });
+
+        function initializeDates() {
+            setDatePreset('month', false);
         }
 
-        async function updateDashboard() {
-            try {
-                const container = document.getElementById('dashboard-container');
-                container.innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>Calculating metrics...</p></div>';
+        function setDatePreset(preset, refresh = true) {
+            const today = new Date();
+            let start = new Date(today);
 
-                // Fetch all three periods in parallel
-                const [dayData, weekData, monthData] = await Promise.all([
-                    fetchMetrics('day'),
-                    fetchMetrics('week'),
-                    fetchMetrics('month')
+            switch(preset) {
+                case 'today':
+                    // start is today
+                    break;
+                case 'week':
+                    start.setDate(today.getDate() - 7);
+                    break;
+                case 'month':
+                    start.setDate(today.getDate() - 30);
+                    break;
+                case 'ytd':
+                    start = new Date(today.getFullYear(), 0, 1);
+                    break;
+            }
+
+            document.getElementById('start-date').value = formatDate(start);
+            document.getElementById('end-date').value = formatDate(today);
+
+            // Update active preset button
+            document.querySelectorAll('.preset-btn').forEach(btn => {
+                btn.classList.remove('preset-active');
+                if (btn.textContent.toLowerCase() === preset ||
+                    (preset === 'ytd' && btn.textContent === 'YTD')) {
+                    btn.classList.add('preset-active');
+                }
+            });
+
+            if (refresh) refreshData();
+        }
+
+        function formatDate(d) {
+            return d.toISOString().split('T')[0];
+        }
+
+        function formatCurrency(value) {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+            }).format(value || 0);
+        }
+
+        function formatNumber(value, decimals = 1) {
+            return (value || 0).toLocaleString('en-US', {
+                minimumFractionDigits: decimals,
+                maximumFractionDigits: decimals
+            });
+        }
+
+        // =============================================================================
+        // VIEW SWITCHING
+        // =============================================================================
+        function switchView(view) {
+            currentView = view;
+
+            // Update tabs
+            ['owner', 'advisor', 'tech'].forEach(v => {
+                const tab = document.getElementById(`tab-${v}`);
+                const viewEl = document.getElementById(`view-${v}`);
+
+                if (v === view) {
+                    tab.classList.add('tab-active');
+                    tab.classList.remove('text-slate-400');
+                    viewEl.classList.remove('hidden');
+                } else {
+                    tab.classList.remove('tab-active');
+                    tab.classList.add('text-slate-400');
+                    viewEl.classList.add('hidden');
+                }
+            });
+
+            lucide.createIcons();
+        }
+
+        // =============================================================================
+        // DATA FETCHING
+        // =============================================================================
+        async function refreshData() {
+            const startDate = document.getElementById('start-date').value;
+            const endDate = document.getElementById('end-date').value;
+
+            // Show loading state
+            const refreshIcon = document.getElementById('refresh-icon');
+            refreshIcon?.classList.add('refresh-spin');
+            showLoading(true);
+
+            try {
+                // Fetch all data in parallel
+                const [metrics, techPerf, advisorPerf, trends, laborEff, dailyTrends] = await Promise.all([
+                    fetchAPI(`/dashboard/true-metrics?start=${startDate}&end=${endDate}`),
+                    fetchAPI(`/analytics/tech-performance?start=${startDate}&end=${endDate}`),
+                    fetchAPI(`/advisors/performance?start=${startDate}&end=${endDate}`),
+                    fetchAPI(`/trends/summary?days=30`).catch(() => null),
+                    fetchAPI(`/analytics/labor-efficiency?start=${startDate}&end=${endDate}`),
+                    fetchAPI(`/trends/daily?days=7`).catch(() => null)
                 ]);
 
-                // Render dashboard
-                container.innerHTML = `
-                    ${renderMetrics('Day', dayData)}
-                    ${renderMetrics('Week', weekData)}
-                    ${renderMetrics('Month', monthData)}
-                `;
+                currentData = { metrics, techPerf, advisorPerf, trends, laborEff, dailyTrends };
 
-                // Update timestamp
-                document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+                updateOwnerView(metrics, laborEff, trends);
+                updateAdvisorView(advisorPerf);
+                updateTechView(techPerf, laborEff);
+                updateTrendChart(dailyTrends);
+
+                // Update last refreshed timestamp
+                const lastUpdated = document.getElementById('last-updated');
+                lastUpdated.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+                lastUpdated.classList.remove('hidden');
 
             } catch (error) {
-                console.error('Dashboard error:', error);
-                document.getElementById('dashboard-container').innerHTML = `
-                    <div class="error">
-                        <strong>Error loading dashboard:</strong> ${error.message}
+                console.error('Error fetching data:', error);
+                showAlert('Error loading dashboard data: ' + error.message, 'critical');
+            }
+
+            refreshIcon?.classList.remove('refresh-spin');
+            showLoading(false);
+        }
+
+        async function fetchAPI(endpoint) {
+            const response = await fetch(`${API_BASE}${endpoint}`);
+            if (!response.ok) throw new Error(`API error: ${response.status}`);
+            return response.json();
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading-state').classList.toggle('hidden', !show);
+            document.getElementById(`view-${currentView}`).classList.toggle('hidden', show);
+        }
+
+        // =============================================================================
+        // OWNER VIEW
+        // =============================================================================
+        function updateOwnerView(metrics, laborEff, trends) {
+            if (!metrics || !metrics.metrics) return;
+
+            const m = metrics.metrics;
+
+            // KPIs
+            document.getElementById('kpi-sales').textContent = formatCurrency(m.sales);
+            document.getElementById('kpi-gp').textContent = formatCurrency(m.gross_profit);
+            document.getElementById('kpi-gp-pct').textContent = `${m.gp_percentage}% margin`;
+            document.getElementById('kpi-aro').textContent = formatCurrency(m.aro);
+            document.getElementById('kpi-car-count').textContent = `${m.car_count} cars`;
+
+            // Labor metrics
+            if (laborEff && laborEff.rates) {
+                document.getElementById('kpi-gp-per-hour').textContent = formatCurrency(laborEff.rates.gp_per_hour);
+                document.getElementById('kpi-hours').textContent = `${formatNumber(laborEff.summary.total_hours_billed)} hours billed`;
+            }
+
+            // Trends/changes
+            if (trends) {
+                const change = trends.wow?.sales_change_pct || 0;
+                const changeEl = document.getElementById('kpi-sales-change');
+                changeEl.innerHTML = `
+                    <i data-lucide="${change >= 0 ? 'trending-up' : 'trending-down'}" class="w-4 h-4"></i>
+                    <span>${change >= 0 ? '+' : ''}${formatNumber(change)}% vs last week</span>
+                `;
+                changeEl.className = `text-sm flex items-center gap-1 mt-1 ${change >= 0 ? 'trend-up' : 'trend-down'}`;
+
+                // Insights
+                if (trends.day_patterns?.best_day) {
+                    document.getElementById('insight-best-day').textContent =
+                        `${trends.day_patterns.best_day.day_name}: ${formatCurrency(trends.day_patterns.best_day.avg_sales)} avg`;
+                }
+                if (trends.forecast) {
+                    document.getElementById('insight-forecast').textContent =
+                        `${formatCurrency(trends.forecast.monthly_projection)} projected`;
+                }
+                if (trends.rolling_averages?.signal) {
+                    const signal = trends.rolling_averages.signal;
+                    document.getElementById('insight-trend').textContent =
+                        `${signal.charAt(0).toUpperCase() + signal.slice(1)} momentum`;
+                }
+            } else {
+                document.getElementById('kpi-sales-change').innerHTML = '<span class="text-slate-400">No trend data</span>';
+            }
+
+            // Update category chart
+            updateCategoryChart(metrics);
+
+            lucide.createIcons();
+        }
+
+        function updateCategoryChart(metrics) {
+            const ctx = document.getElementById('chart-category').getContext('2d');
+
+            if (charts.category) charts.category.destroy();
+
+            const parts = metrics.parts_summary?.profit || 0;
+            const labor = metrics.labor_summary?.profit || 0;
+            const fees = metrics.metrics?.fee_profit || 0;
+
+            charts.category = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Parts', 'Labor', 'Fees'],
+                    datasets: [{
+                        data: [parts, labor, fees],
+                        backgroundColor: ['#10b981', '#3b82f6', '#f59e0b'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { color: '#94a3b8', padding: 15 }
+                        }
+                    },
+                    cutout: '65%'
+                }
+            });
+        }
+
+        // =============================================================================
+        // ADVISOR VIEW
+        // =============================================================================
+        function updateAdvisorView(data) {
+            if (!data || !data.advisors) return;
+
+            updateLeaderboard(data.advisors);
+            updateGoals(data.advisors);
+        }
+
+        function updateLeaderboard(advisors) {
+            const sortBy = document.getElementById('leaderboard-sort')?.value || 'sales';
+            const container = document.getElementById('leaderboard-container');
+
+            // Use passed advisors or cached data
+            const data = advisors || currentData.advisorPerf?.advisors;
+            if (!data || data.length === 0) {
+                container.innerHTML = '<p class="text-slate-400 text-center py-8">No advisors found for this period</p>';
+                return;
+            }
+
+            // Sort
+            const sorted = [...data].sort((a, b) => {
+                const getValue = (adv) => {
+                    switch(sortBy) {
+                        case 'sales': return adv.total_sales;
+                        case 'gp': return adv.gross_profit;
+                        case 'gp_pct': return adv.gp_percentage;
+                        case 'aro': return adv.aro;
+                        case 'ro_count': return adv.ro_count;
+                        default: return adv.total_sales;
+                    }
+                };
+                return getValue(b) - getValue(a);
+            });
+
+            container.innerHTML = sorted.map((adv, idx) => `
+                <div class="leaderboard-row flex items-center gap-4 p-4 bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-800 transition-all" onclick="showAdvisorDetail(${adv.advisor_id})">
+                    <div class="rank-badge w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white bg-slate-600">
+                        ${idx + 1}
+                    </div>
+                    <div class="flex-1">
+                        <p class="font-medium text-white">${adv.advisor_name}</p>
+                        <p class="text-xs text-slate-400">${adv.ro_count} ROs</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-bold text-white">${formatCurrency(adv.total_sales)}</p>
+                        <p class="text-xs ${adv.gp_percentage >= 50 ? 'text-emerald-500' : adv.gp_percentage >= 45 ? 'text-amber-500' : 'text-red-500'}">
+                            ${formatNumber(adv.gp_percentage)}% GP
+                        </p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateGoals(advisors) {
+            const goal = parseFloat(document.getElementById('goal-sales')?.value) || 50000;
+            const container = document.getElementById('goals-container');
+
+            const data = advisors || currentData.advisorPerf?.advisors;
+            if (!data || data.length === 0) {
+                container.innerHTML = '<p class="text-slate-400 text-center py-4">No advisor data</p>';
+                return;
+            }
+
+            container.innerHTML = data.slice(0, 5).map(adv => {
+                const progress = Math.min((adv.total_sales / goal) * 100, 100);
+                const met = adv.total_sales >= goal;
+                return `
+                    <div class="mb-4">
+                        <div class="flex justify-between text-sm mb-1">
+                            <span class="text-white font-medium">${adv.advisor_name}</span>
+                            <span class="${met ? 'text-emerald-500' : 'text-slate-400'}">${formatCurrency(adv.total_sales)}</span>
+                        </div>
+                        <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
+                            <div class="progress-bar h-full rounded-full" style="width: ${progress}%"></div>
+                        </div>
+                        <p class="text-xs text-slate-500 mt-1">${formatNumber(progress)}% of ${formatCurrency(goal)}</p>
                     </div>
                 `;
+            }).join('');
+        }
+
+        async function showAdvisorDetail(advisorId) {
+            const startDate = document.getElementById('start-date').value;
+            const endDate = document.getElementById('end-date').value;
+
+            try {
+                const detail = await fetchAPI(`/advisors/advisor/${advisorId}?start=${startDate}&end=${endDate}`);
+
+                document.getElementById('advisor-detail-name').textContent = detail.advisor_name || 'Advisor Details';
+                document.getElementById('advisor-detail').classList.remove('hidden');
+
+                const content = document.getElementById('advisor-detail-content');
+                content.innerHTML = `
+                    <div class="grid grid-cols-4 gap-4 mb-6">
+                        <div class="text-center p-3 bg-slate-800 rounded-lg">
+                            <p class="text-2xl font-bold text-white">${formatCurrency(detail.summary?.total_sales)}</p>
+                            <p class="text-xs text-slate-400">Total Sales</p>
+                        </div>
+                        <div class="text-center p-3 bg-slate-800 rounded-lg">
+                            <p class="text-2xl font-bold text-emerald-500">${formatCurrency(detail.summary?.gross_profit)}</p>
+                            <p class="text-xs text-slate-400">Gross Profit</p>
+                        </div>
+                        <div class="text-center p-3 bg-slate-800 rounded-lg">
+                            <p class="text-2xl font-bold text-white">${formatNumber(detail.summary?.gp_percentage)}%</p>
+                            <p class="text-xs text-slate-400">GP %</p>
+                        </div>
+                        <div class="text-center p-3 bg-slate-800 rounded-lg">
+                            <p class="text-2xl font-bold text-white">${formatCurrency(detail.summary?.aro)}</p>
+                            <p class="text-xs text-slate-400">ARO</p>
+                        </div>
+                    </div>
+                    <h4 class="font-medium text-white mb-3">Recent ROs</h4>
+                    <div class="space-y-2 max-h-64 overflow-y-auto scrollbar-thin">
+                        ${(detail.ros || []).slice(0, 10).map(ro => `
+                            <div class="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg">
+                                <div>
+                                    <p class="font-medium text-white">${ro.customer || 'Unknown'}</p>
+                                    <p class="text-xs text-slate-400">${ro.vehicle || 'N/A'} - ${ro.jobs || 0} jobs</p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="font-medium text-white">${formatCurrency(ro.total)}</p>
+                                    <p class="text-xs ${(ro.gp_pct || 0) >= 50 ? 'text-emerald-500' : 'text-amber-500'}">${formatNumber(ro.gp_pct)}% GP</p>
+                                </div>
+                            </div>
+                        `).join('') || '<p class="text-slate-400 text-center py-4">No ROs found</p>'}
+                    </div>
+                `;
+                lucide.createIcons();
+            } catch (error) {
+                console.error('Error fetching advisor detail:', error);
             }
         }
 
-        // Initial load
-        updateDashboard();
+        function hideAdvisorDetail() {
+            document.getElementById('advisor-detail').classList.add('hidden');
+        }
 
-        // Auto-refresh every 60 seconds
-        setInterval(updateDashboard, 60000);
+        // =============================================================================
+        // TECH VIEW
+        // =============================================================================
+        function updateTechView(techPerf, laborEff) {
+            if (!techPerf) return;
+
+            // KPIs
+            const summary = techPerf.summary || {};
+            document.getElementById('tech-kpi-hours').textContent = formatNumber(summary.total_hours || 0);
+            document.getElementById('tech-kpi-revenue').textContent = formatCurrency(summary.total_labor_revenue || 0);
+            document.getElementById('tech-kpi-profit').textContent = formatCurrency(summary.total_labor_profit || 0);
+
+            if (laborEff && laborEff.rates) {
+                document.getElementById('tech-kpi-gp-hour').textContent = formatCurrency(laborEff.rates.gp_per_hour);
+                document.getElementById('stat-retail-rate').textContent = `${formatCurrency(laborEff.rates.avg_retail_rate)}/hr`;
+                document.getElementById('stat-cost-rate').textContent = `${formatCurrency(laborEff.rates.avg_tech_cost_rate)}/hr`;
+                document.getElementById('stat-spread').textContent = `${formatCurrency(laborEff.rates.effective_spread)}/hr`;
+            }
+
+            // Tech table
+            const tbody = document.getElementById('tech-table-body');
+            const techs = techPerf.technicians || [];
+
+            if (techs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="py-8 text-center text-slate-400">No technicians found for this period</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = techs.map(tech => `
+                <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+                    <td class="py-3">
+                        <div class="flex items-center gap-2">
+                            <div class="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                                <span class="text-emerald-500 font-medium text-xs">${(tech.tech_name || 'U').charAt(0)}</span>
+                            </div>
+                            <span class="font-medium text-white">${tech.tech_name || 'Unknown'}</span>
+                        </div>
+                    </td>
+                    <td class="py-3 text-right text-slate-300">${formatNumber(tech.hours_billed || 0)}</td>
+                    <td class="py-3 text-right text-slate-300">${formatCurrency(tech.labor_revenue)}</td>
+                    <td class="py-3 text-right text-emerald-500 font-medium">${formatCurrency(tech.labor_profit)}</td>
+                    <td class="py-3 text-right text-slate-300">${formatCurrency(tech.gp_per_hour)}</td>
+                    <td class="py-3 text-right">
+                        <span class="px-2 py-1 rounded text-xs font-medium ${(tech.labor_margin_pct || 0) >= 70 ? 'bg-emerald-500/20 text-emerald-500' : (tech.labor_margin_pct || 0) >= 60 ? 'bg-amber-500/20 text-amber-500' : 'bg-red-500/20 text-red-500'}">
+                            ${formatNumber(tech.labor_margin_pct)}%
+                        </span>
+                    </td>
+                </tr>
+            `).join('');
+
+            // Rate chart
+            updateRateChart(laborEff);
+        }
+
+        function updateRateChart(laborEff) {
+            if (!laborEff || !laborEff.by_rate_source) return;
+
+            const ctx = document.getElementById('chart-rates').getContext('2d');
+            if (charts.rates) charts.rates.destroy();
+
+            const sources = laborEff.by_rate_source;
+            const labels = Object.keys(sources).map(s => s.replace('_', ' '));
+            const data = Object.values(sources).map(s => s.profit || 0);
+
+            charts.rates = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Profit',
+                        data: data,
+                        backgroundColor: ['#10b981', '#3b82f6', '#f59e0b'],
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#94a3b8' }
+                        },
+                        y: {
+                            grid: { color: '#334155' },
+                            ticks: {
+                                color: '#94a3b8',
+                                callback: v => '$' + v.toLocaleString()
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // =============================================================================
+        // CHARTS
+        // =============================================================================
+        function initializeCharts() {
+            // Trend chart placeholder
+            const trendCtx = document.getElementById('chart-trend').getContext('2d');
+            charts.trend = new Chart(trendCtx, {
+                type: 'line',
+                data: {
+                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                    datasets: [
+                        {
+                            label: 'Sales',
+                            data: [0, 0, 0, 0, 0, 0, 0],
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'GP',
+                            data: [0, 0, 0, 0, 0, 0, 0],
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'transparent',
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: { color: '#94a3b8' }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#94a3b8' }
+                        },
+                        y: {
+                            grid: { color: '#334155' },
+                            ticks: {
+                                color: '#94a3b8',
+                                callback: v => '$' + (v/1000) + 'k'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateTrendChart(dailyData) {
+            if (!dailyData || !dailyData.daily_metrics) return;
+
+            const days = dailyData.daily_metrics;
+            const labels = days.map(d => {
+                const date = new Date(d.date);
+                return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+            });
+            const sales = days.map(d => d.sales || 0);
+            const gp = days.map(d => d.gross_profit || 0);
+
+            if (charts.trend) {
+                charts.trend.data.labels = labels;
+                charts.trend.data.datasets[0].data = sales;
+                charts.trend.data.datasets[1].data = gp;
+                charts.trend.update('none');
+            }
+        }
+
+        // =============================================================================
+        // WEBSOCKET
+        // =============================================================================
+        function connectWebSocket() {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            const wsUrl = `${wsProtocol}://${window.location.host}/api/realtime/ws`;
+
+            try {
+                wsConnection = new WebSocket(wsUrl);
+
+                wsConnection.onopen = () => {
+                    updateWsStatus(true);
+                    console.log('[WS] Connected');
+                };
+
+                wsConnection.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleWsMessage(data);
+                    } catch (e) {
+                        console.error('[WS] Parse error:', e);
+                    }
+                };
+
+                wsConnection.onclose = () => {
+                    updateWsStatus(false);
+                    console.log('[WS] Disconnected, reconnecting in 5s...');
+                    setTimeout(connectWebSocket, 5000);
+                };
+
+                wsConnection.onerror = (error) => {
+                    console.error('[WS] Error:', error);
+                    updateWsStatus(false);
+                };
+            } catch (e) {
+                console.error('[WS] Connection failed:', e);
+                updateWsStatus(false);
+            }
+        }
+
+        function updateWsStatus(connected) {
+            const el = document.getElementById('ws-status');
+            el.innerHTML = connected ? `
+                <div class="w-2 h-2 rounded-full bg-emerald-500 pulse-green"></div>
+                <span class="text-xs text-emerald-500">Live</span>
+            ` : `
+                <div class="w-2 h-2 rounded-full bg-slate-500"></div>
+                <span class="text-xs text-slate-400">Offline</span>
+            `;
+        }
+
+        function handleWsMessage(data) {
+            switch(data.type) {
+                case 'dashboard_update':
+                    if (currentView === 'owner') {
+                        updateOwnerKPIs(data.data);
+                    }
+                    break;
+                case 'alert':
+                    showAlert(data.data?.message || data.message, data.data?.severity || 'info');
+                    break;
+                case 'tech_update':
+                    // Could refresh tech view with new data
+                    break;
+                case 'initial_data':
+                    console.log('[WS] Initial data received');
+                    break;
+                case 'heartbeat':
+                    // Connection alive
+                    break;
+            }
+        }
+
+        function updateOwnerKPIs(data) {
+            if (!data) return;
+            if (data.sales) document.getElementById('kpi-sales').textContent = formatCurrency(data.sales);
+            if (data.gross_profit) document.getElementById('kpi-gp').textContent = formatCurrency(data.gross_profit);
+            if (data.gp_percentage) document.getElementById('kpi-gp-pct').textContent = `${data.gp_percentage}% margin`;
+            if (data.aro) document.getElementById('kpi-aro').textContent = formatCurrency(data.aro);
+            if (data.car_count !== undefined) document.getElementById('kpi-car-count').textContent = `${data.car_count} cars`;
+        }
+
+        // =============================================================================
+        // ALERTS
+        // =============================================================================
+        function showAlert(message, severity = 'info') {
+            const container = document.getElementById('alerts-container');
+            const alertClass = severity === 'critical' ? 'alert-critical' :
+                              severity === 'warning' ? 'alert-warning' : 'alert-info';
+            const icon = severity === 'critical' ? 'alert-circle' :
+                        severity === 'warning' ? 'alert-triangle' : 'info';
+
+            const alertEl = document.createElement('div');
+            alertEl.className = `${alertClass} rounded-lg p-4 fade-in flex items-start gap-3`;
+            alertEl.innerHTML = `
+                <i data-lucide="${icon}" class="w-5 h-5 flex-shrink-0 mt-0.5"></i>
+                <div>
+                    <p class="text-sm text-slate-200">${message}</p>
+                    <p class="text-xs text-slate-500 mt-1">${new Date().toLocaleTimeString()}</p>
+                </div>
+            `;
+
+            container.insertBefore(alertEl, container.firstChild);
+            lucide.createIcons();
+
+            // Keep only last 10 alerts
+            while (container.children.length > 10) {
+                container.removeChild(container.lastChild);
+            }
+        }
+
+        // =============================================================================
+        // DRILL-DOWN MODAL
+        // =============================================================================
+        function showDrilldown(metric) {
+            const modal = document.getElementById('modal-drilldown');
+            const title = document.getElementById('modal-title');
+            const content = document.getElementById('modal-content');
+
+            const metrics = currentData.metrics?.metrics || {};
+            const parts = currentData.metrics?.parts_summary || {};
+            const labor = currentData.metrics?.labor_summary || {};
+
+            let html = '';
+
+            switch(metric) {
+                case 'sales':
+                    title.textContent = 'Sales Breakdown';
+                    html = `
+                        <div class="grid grid-cols-2 gap-4 mb-6">
+                            <div class="p-4 bg-slate-800 rounded-lg">
+                                <p class="text-sm text-slate-400 mb-1">Parts Revenue</p>
+                                <p class="text-2xl font-bold text-white">${formatCurrency(parts.retail || 0)}</p>
+                            </div>
+                            <div class="p-4 bg-slate-800 rounded-lg">
+                                <p class="text-sm text-slate-400 mb-1">Labor Revenue</p>
+                                <p class="text-2xl font-bold text-white">${formatCurrency(labor.retail || 0)}</p>
+                            </div>
+                        </div>
+                        <div class="p-4 bg-slate-800/50 rounded-lg">
+                            <p class="text-sm text-slate-400 mb-2">Revenue Mix</p>
+                            <div class="flex h-4 rounded-full overflow-hidden">
+                                <div class="bg-emerald-500" style="width: ${metrics.sales ? (parts.retail / metrics.sales * 100) : 0}%"></div>
+                                <div class="bg-blue-500" style="width: ${metrics.sales ? (labor.retail / metrics.sales * 100) : 0}%"></div>
+                            </div>
+                            <div class="flex justify-between text-xs text-slate-400 mt-2">
+                                <span>Parts ${formatNumber(metrics.sales ? (parts.retail / metrics.sales * 100) : 0)}%</span>
+                                <span>Labor ${formatNumber(metrics.sales ? (labor.retail / metrics.sales * 100) : 0)}%</span>
+                            </div>
+                        </div>
+                    `;
+                    break;
+
+                case 'gp':
+                    title.textContent = 'Gross Profit Analysis';
+                    html = `
+                        <div class="grid grid-cols-3 gap-4 mb-6">
+                            <div class="p-4 bg-slate-800 rounded-lg">
+                                <p class="text-sm text-slate-400 mb-1">Parts Profit</p>
+                                <p class="text-xl font-bold text-emerald-500">${formatCurrency(parts.profit || 0)}</p>
+                                <p class="text-xs text-slate-500">${formatNumber(parts.margin_pct || 0)}% margin</p>
+                            </div>
+                            <div class="p-4 bg-slate-800 rounded-lg">
+                                <p class="text-sm text-slate-400 mb-1">Labor Profit</p>
+                                <p class="text-xl font-bold text-blue-500">${formatCurrency(labor.profit || 0)}</p>
+                                <p class="text-xs text-slate-500">${formatNumber(labor.margin_pct || 0)}% margin</p>
+                            </div>
+                            <div class="p-4 bg-slate-800 rounded-lg">
+                                <p class="text-sm text-slate-400 mb-1">Fee Profit</p>
+                                <p class="text-xl font-bold text-amber-500">${formatCurrency(metrics.fee_profit || 0)}</p>
+                                <p class="text-xs text-slate-500">100% margin</p>
+                            </div>
+                        </div>
+                        <div class="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                            <div class="flex items-center gap-2 mb-2">
+                                <i data-lucide="check-circle" class="w-5 h-5 text-emerald-500"></i>
+                                <span class="font-medium text-emerald-500">True GP Calculation</span>
+                            </div>
+                            <p class="text-sm text-slate-300">This uses the corrected GP calculation with proper quantity handling, tech rate fallbacks, and fee inclusion.</p>
+                        </div>
+                    `;
+                    break;
+
+                case 'aro':
+                    title.textContent = 'Average RO Details';
+                    html = `
+                        <div class="grid grid-cols-2 gap-4 mb-6">
+                            <div class="p-4 bg-slate-800 rounded-lg">
+                                <p class="text-sm text-slate-400 mb-1">Total Cars</p>
+                                <p class="text-3xl font-bold text-white">${metrics.car_count || 0}</p>
+                            </div>
+                            <div class="p-4 bg-slate-800 rounded-lg">
+                                <p class="text-sm text-slate-400 mb-1">Average RO</p>
+                                <p class="text-3xl font-bold text-white">${formatCurrency(metrics.aro || 0)}</p>
+                            </div>
+                        </div>
+                        <div class="p-4 bg-slate-800/50 rounded-lg">
+                            <p class="text-sm text-slate-400 mb-2">Key Metrics</p>
+                            <div class="space-y-2">
+                                <div class="flex justify-between">
+                                    <span class="text-slate-300">Avg GP per RO</span>
+                                    <span class="font-medium text-emerald-500">${formatCurrency((metrics.gross_profit || 0) / (metrics.car_count || 1))}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-slate-300">Avg Parts per RO</span>
+                                    <span class="font-medium text-white">${formatCurrency((parts.retail || 0) / (metrics.car_count || 1))}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-slate-300">Avg Labor per RO</span>
+                                    <span class="font-medium text-white">${formatCurrency((labor.retail || 0) / (metrics.car_count || 1))}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    break;
+
+                case 'labor':
+                    title.textContent = 'Labor Efficiency';
+                    const laborEff = currentData.laborEff || {};
+                    html = `
+                        <div class="grid grid-cols-2 gap-4 mb-6">
+                            <div class="p-4 bg-slate-800 rounded-lg">
+                                <p class="text-sm text-slate-400 mb-1">Total Hours Billed</p>
+                                <p class="text-2xl font-bold text-white">${formatNumber(laborEff.summary?.total_hours_billed || 0)}</p>
+                            </div>
+                            <div class="p-4 bg-slate-800 rounded-lg">
+                                <p class="text-sm text-slate-400 mb-1">GP Per Hour</p>
+                                <p class="text-2xl font-bold text-emerald-500">${formatCurrency(laborEff.rates?.gp_per_hour || 0)}</p>
+                            </div>
+                        </div>
+                        <div class="p-4 bg-slate-800/50 rounded-lg mb-4">
+                            <p class="text-sm text-slate-400 mb-3">Rate Breakdown</p>
+                            <div class="space-y-3">
+                                <div>
+                                    <div class="flex justify-between text-sm mb-1">
+                                        <span class="text-slate-300">Retail Rate</span>
+                                        <span class="text-white">${formatCurrency(laborEff.rates?.avg_retail_rate || 0)}/hr</span>
+                                    </div>
+                                    <div class="h-2 bg-slate-700 rounded-full">
+                                        <div class="h-full bg-blue-500 rounded-full" style="width: 100%"></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between text-sm mb-1">
+                                        <span class="text-slate-300">Tech Cost Rate</span>
+                                        <span class="text-white">${formatCurrency(laborEff.rates?.avg_tech_cost_rate || 0)}/hr</span>
+                                    </div>
+                                    <div class="h-2 bg-slate-700 rounded-full">
+                                        <div class="h-full bg-red-500 rounded-full" style="width: ${((laborEff.rates?.avg_tech_cost_rate || 0) / (laborEff.rates?.avg_retail_rate || 1) * 100)}%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                            <p class="text-sm text-slate-300">
+                                <strong class="text-emerald-500">Effective Spread:</strong>
+                                ${formatCurrency(laborEff.rates?.effective_spread || 0)}/hr profit on every labor hour
+                            </p>
+                        </div>
+                    `;
+                    break;
+            }
+
+            content.innerHTML = html;
+            modal.classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closeDrilldown() {
+            document.getElementById('modal-drilldown').classList.add('hidden');
+        }
+
+        // Close modal on escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeDrilldown();
+        });
     </script>
 </body>
 </html>
