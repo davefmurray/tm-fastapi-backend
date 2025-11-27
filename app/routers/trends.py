@@ -104,7 +104,7 @@ async def week_over_week_comparison(
     Identifies trends and highlights significant changes.
     """
     try:
-        client = await get_tm_client()
+        client = get_tm_client()
         shop_id = int(client.shop_id)
         persistence = get_persistence_service()
 
@@ -225,7 +225,7 @@ async def month_over_month_comparison(
     Compares monthly metrics for the specified number of months.
     """
     try:
-        client = await get_tm_client()
+        client = get_tm_client()
         shop_id = int(client.shop_id)
         persistence = get_persistence_service()
 
@@ -346,7 +346,7 @@ async def get_rolling_averages(
     Useful for identifying trend crossovers and smoothing daily noise.
     """
     try:
-        client = await get_tm_client()
+        client = get_tm_client()
         shop_id = int(client.shop_id)
         persistence = get_persistence_service()
 
@@ -450,7 +450,7 @@ async def forecast_gp_metrics(
     Includes confidence indicators based on R-squared values.
     """
     try:
-        client = await get_tm_client()
+        client = get_tm_client()
         shop_id = int(client.shop_id)
         persistence = get_persistence_service()
 
@@ -573,7 +573,7 @@ async def analyze_day_of_week_patterns(
     - Consistency of patterns
     """
     try:
-        client = await get_tm_client()
+        client = get_tm_client()
         shop_id = int(client.shop_id)
         persistence = get_persistence_service()
 
@@ -702,7 +702,7 @@ async def get_extreme_days(
     - ARO
     """
     try:
-        client = await get_tm_client()
+        client = get_tm_client()
         shop_id = int(client.shop_id)
         persistence = get_persistence_service()
 
@@ -784,7 +784,7 @@ async def analyze_category_trends(
     Shows how each category's contribution to GP has changed over time.
     """
     try:
-        client = await get_tm_client()
+        client = get_tm_client()
         shop_id = int(client.shop_id)
         persistence = get_persistence_service()
 
@@ -895,7 +895,7 @@ async def get_trend_summary_dashboard(
     Ideal for executive dashboards.
     """
     try:
-        client = await get_tm_client()
+        client = get_tm_client()
         shop_id = int(client.shop_id)
         persistence = get_persistence_service()
 

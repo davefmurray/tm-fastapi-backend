@@ -23,7 +23,7 @@ router = APIRouter()
 
 async def _get_ro_results(start_date: str, end_date: str, status_filter: List[int] = None):
     """Helper to fetch and calculate RO GP results."""
-    client = await get_tm_client()
+    client = get_tm_client()
     shop_config = await get_shop_config(client, client.shop_id)
 
     ros = await client.get_ros_for_period(
