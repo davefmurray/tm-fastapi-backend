@@ -2,13 +2,14 @@
 
 ## Overview
 
-The True GP system provides **accurate gross profit calculations** that fix known issues with Tekmetric's built-in aggregates. It's built in 3 tiers:
+The True GP system provides **accurate gross profit calculations** that fix known issues with Tekmetric's built-in aggregates. It's built in 4 tiers:
 
 | Tier | Purpose |
 |------|---------|
 | **Tier 1** | Core GP fixes (quantity handling, tech rates, fees, discounts) |
 | **Tier 2** | Structured responses (tax/fee attribution, caching) |
 | **Tier 3** | Advanced analytics (tech performance, parts margin, variance) |
+| **Tier 4** | Database persistence (historical tracking, trend analysis) |
 
 ---
 
@@ -22,6 +23,12 @@ The True GP system provides **accurate gross profit calculations** that fix know
 | Analyze parts margins | `GET /api/analytics/parts-margin` |
 | Check labor efficiency | `GET /api/analytics/labor-efficiency` |
 | Get everything in one call | `GET /api/analytics/full-analysis` |
+| **Save today's metrics to database** | `POST /api/history/snapshot/daily` |
+| **View GP trends over time** | `GET /api/history/trends` |
+| **Get historical daily snapshots** | `GET /api/history/snapshots/daily` |
+| **Track specific RO over time** | `GET /api/history/ro/{ro_id}` |
+| **Compare two time periods** | `GET /api/history/compare/periods` |
+| **View tech performance history** | `GET /api/history/tech-performance` |
 
 ---
 
@@ -528,3 +535,403 @@ TM_SHOP_ID=6212
 | `/api/analytics/full-analysis` | Comprehensive reports |
 
 **All values are in dollars (not cents).** The system handles conversion internally.
+
+---
+
+## Tier 4: Historical Persistence & Trends
+
+Tier 4 adds **database storage** for GP calculations, enabling:
+- Track GP trends over time
+- Period-over-period comparisons
+- Audit trail for calculations
+- Tech performance history
+
+### Database Setup (Supabase)
+
+Create these tables in your Supabase dashboard:
+
+```sql
+-- Daily GP Snapshots
+CREATE TABLE gp_daily_snapshots (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    shop_id INTEGER NOT NULL,
+    snapshot_date DATE NOT NULL,
+    total_revenue INTEGER NOT NULL,
+    total_cost INTEGER NOT NULL,
+    total_gp_dollars INTEGER NOT NULL,
+    gp_percentage DECIMAL(5,2) NOT NULL,
+    ro_count INTEGER NOT NULL,
+    aro_cents INTEGER NOT NULL,
+    parts_revenue INTEGER DEFAULT 0,
+    parts_cost INTEGER DEFAULT 0,
+    parts_profit INTEGER DEFAULT 0,
+    labor_revenue INTEGER DEFAULT 0,
+    labor_cost INTEGER DEFAULT 0,
+    labor_profit INTEGER DEFAULT 0,
+    sublet_revenue INTEGER DEFAULT 0,
+    sublet_cost INTEGER DEFAULT 0,
+    sublet_profit INTEGER DEFAULT 0,
+    fees_total INTEGER DEFAULT 0,
+    taxes_total INTEGER DEFAULT 0,
+    tech_hours_billed DECIMAL(10,2) DEFAULT 0,
+    avg_tech_rate INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    calculation_method TEXT DEFAULT 'TRUE_GP_TIER4',
+    UNIQUE(shop_id, snapshot_date)
+);
+
+-- RO History Records
+CREATE TABLE gp_ro_history (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    shop_id INTEGER NOT NULL,
+    ro_id INTEGER NOT NULL,
+    ro_number TEXT,
+    snapshot_date DATE NOT NULL,
+    customer_name TEXT,
+    vehicle_description TEXT,
+    ro_status TEXT,
+    total_revenue INTEGER NOT NULL,
+    total_cost INTEGER NOT NULL,
+    gp_dollars INTEGER NOT NULL,
+    gp_percentage DECIMAL(5,2) NOT NULL,
+    tm_reported_gp_pct DECIMAL(5,2),
+    variance_pct DECIMAL(5,2),
+    variance_reason TEXT,
+    parts_breakdown JSONB,
+    labor_breakdown JSONB,
+    sublet_breakdown JSONB,
+    fee_breakdown JSONB,
+    tax_breakdown JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(shop_id, ro_id, snapshot_date)
+);
+
+-- Tech Performance History
+CREATE TABLE gp_tech_performance (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    shop_id INTEGER NOT NULL,
+    tech_id INTEGER NOT NULL,
+    tech_name TEXT NOT NULL,
+    snapshot_date DATE NOT NULL,
+    hours_billed DECIMAL(10,2) NOT NULL,
+    hourly_rate INTEGER NOT NULL,
+    labor_revenue INTEGER NOT NULL,
+    labor_cost INTEGER NOT NULL,
+    labor_profit INTEGER NOT NULL,
+    labor_margin_pct DECIMAL(5,2) NOT NULL,
+    gp_per_hour INTEGER NOT NULL,
+    jobs_worked INTEGER DEFAULT 0,
+    ros_worked INTEGER DEFAULT 0,
+    rate_source_counts JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(shop_id, tech_id, snapshot_date)
+);
+
+-- Indexes
+CREATE INDEX idx_daily_snapshots_shop_date ON gp_daily_snapshots(shop_id, snapshot_date DESC);
+CREATE INDEX idx_ro_history_shop_date ON gp_ro_history(shop_id, snapshot_date DESC);
+CREATE INDEX idx_tech_performance_shop_date ON gp_tech_performance(shop_id, snapshot_date DESC);
+```
+
+### Environment Variables
+
+```bash
+# Add to your .env
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-anon-key
+
+# Optional: Custom table names
+GP_DAILY_TABLE=gp_daily_snapshots
+GP_RO_TABLE=gp_ro_history
+GP_TECH_TABLE=gp_tech_performance
+```
+
+---
+
+### 7. Create Daily Snapshot
+
+**`POST /api/history/snapshot/daily?start_date=2025-11-26&end_date=2025-11-26`**
+
+Creates a historical snapshot from current RO data. **Run this daily via cron.**
+
+```json
+{
+  "success": true,
+  "message": "Daily snapshot created successfully",
+  "period": {
+    "start": "2025-11-26",
+    "end": "2025-11-26"
+  },
+  "summary": {
+    "ros_processed": 30,
+    "ro_records_stored": 30,
+    "tech_records_stored": 5,
+    "total_revenue": 45230.50,
+    "gp_percentage": 59.02
+  }
+}
+```
+
+#### Cron Setup (Daily Snapshots)
+
+```bash
+# Add to crontab (run at 11:59 PM daily)
+59 23 * * * curl -X POST "http://localhost:8000/api/history/snapshot/daily"
+```
+
+---
+
+### 8. Get Daily Snapshots History
+
+**`GET /api/history/snapshots/daily?days=30`**
+
+Retrieves stored daily snapshots for trend analysis.
+
+```json
+{
+  "period": {
+    "start": "2025-10-27",
+    "end": "2025-11-26",
+    "days": 30
+  },
+  "count": 22,
+  "snapshots": [
+    {
+      "snapshot_date": "2025-11-26",
+      "total_revenue": 45230.50,
+      "total_cost": 18540.25,
+      "total_gp_dollars": 26690.25,
+      "gp_percentage": 59.02,
+      "ro_count": 30,
+      "aro": 1507.68,
+      "parts_profit": 11250.00,
+      "labor_profit": 13100.00
+    },
+    {
+      "snapshot_date": "2025-11-25",
+      "total_revenue": 38750.00,
+      "gp_percentage": 57.45
+    }
+  ]
+}
+```
+
+---
+
+### 9. Get GP Trends
+
+**`GET /api/history/trends?days=30`**
+
+Returns trend analysis with direction indicator.
+
+```json
+{
+  "success": true,
+  "analysis": {
+    "period_days": 30,
+    "data_points": 22,
+    "start_date": "2025-10-27",
+    "end_date": "2025-11-26",
+    "average_gp_percentage": 56.78,
+    "average_daily_revenue": 42500.00,
+    "average_aro": 1425.50,
+    "total_ros": 660,
+    "gp_trend": 2.15,
+    "trend_direction": "up"
+  },
+  "recommendations": [
+    "Strong GP% - Maintain current pricing strategy",
+    "Positive trend - Document recent changes for best practices"
+  ]
+}
+```
+
+---
+
+### 10. Get RO History
+
+**`GET /api/history/ro/24715?limit=10`**
+
+Track GP calculations for a specific RO over time.
+
+```json
+{
+  "ro_id": 24715,
+  "ro_number": "24715",
+  "history_count": 5,
+  "history": [
+    {
+      "snapshot_date": "2025-11-26",
+      "gp_percentage": 62.5,
+      "gp_dollars": 1875.50,
+      "variance_pct": 3.2,
+      "variance_reason": "labor_cost_included"
+    },
+    {
+      "snapshot_date": "2025-11-25",
+      "gp_percentage": 61.8,
+      "gp_dollars": 1850.00
+    }
+  ]
+}
+```
+
+---
+
+### 11. Compare Time Periods
+
+**`GET /api/history/compare/periods?period1_start=2025-10-01&period1_end=2025-10-31&period2_start=2025-11-01&period2_end=2025-11-26`**
+
+Compare GP metrics between two periods (month-over-month, year-over-year).
+
+```json
+{
+  "period_1": {
+    "start": "2025-10-01",
+    "end": "2025-10-31",
+    "summary": {
+      "days": 23,
+      "total_revenue": 125000.00,
+      "total_gp": 68750.00,
+      "avg_gp_pct": 55.0,
+      "total_ros": 85,
+      "avg_aro": 1470.59
+    }
+  },
+  "period_2": {
+    "start": "2025-11-01",
+    "end": "2025-11-26",
+    "summary": {
+      "days": 19,
+      "total_revenue": 145000.00,
+      "total_gp": 85550.00,
+      "avg_gp_pct": 59.0,
+      "total_ros": 92,
+      "avg_aro": 1576.09
+    }
+  },
+  "comparison": {
+    "gp_pct_change": 4.0,
+    "revenue_change_pct": 16.0,
+    "aro_change_pct": 7.17
+  }
+}
+```
+
+---
+
+### 12. Tech Performance History
+
+**`GET /api/history/tech-performance?days=30&tech_id=12345`**
+
+Track how technician metrics change over time.
+
+```json
+{
+  "period": {
+    "start": "2025-10-27",
+    "end": "2025-11-26"
+  },
+  "tech_id": 12345,
+  "record_count": 18,
+  "records": [
+    {
+      "snapshot_date": "2025-11-26",
+      "tech_name": "John Smith",
+      "hours_billed": 8.5,
+      "hourly_rate": 35.00,
+      "labor_profit": 1275.50,
+      "labor_margin_pct": 82.3,
+      "gp_per_hour": 150.06
+    },
+    {
+      "snapshot_date": "2025-11-25",
+      "tech_name": "John Smith",
+      "hours_billed": 7.0,
+      "labor_profit": 1050.00,
+      "gp_per_hour": 150.00
+    }
+  ]
+}
+```
+
+---
+
+## Dashboard Integration: Trend Chart
+
+```javascript
+// Fetch 30-day trend data
+async function loadTrendChart() {
+  const res = await fetch('/api/history/snapshots/daily?days=30');
+  const data = await res.json();
+
+  // Reverse for chronological order
+  const snapshots = data.snapshots.reverse();
+
+  new Chart(document.getElementById('trend-chart'), {
+    type: 'line',
+    data: {
+      labels: snapshots.map(s => s.snapshot_date),
+      datasets: [
+        {
+          label: 'GP%',
+          data: snapshots.map(s => s.gp_percentage),
+          borderColor: '#4CAF50',
+          yAxisID: 'y-gp'
+        },
+        {
+          label: 'Revenue',
+          data: snapshots.map(s => s.total_revenue),
+          borderColor: '#2196F3',
+          yAxisID: 'y-revenue'
+        }
+      ]
+    },
+    options: {
+      scales: {
+        'y-gp': { position: 'left', min: 40, max: 70 },
+        'y-revenue': { position: 'right' }
+      }
+    }
+  });
+}
+
+// Show trend indicator
+async function showTrendIndicator() {
+  const res = await fetch('/api/history/trends?days=30');
+  const data = await res.json();
+
+  const indicator = document.getElementById('trend-indicator');
+  const trend = data.analysis.trend_direction;
+
+  if (trend === 'up') {
+    indicator.innerHTML = '&#x2191; Trending Up';
+    indicator.className = 'trend-up';
+  } else if (trend === 'down') {
+    indicator.innerHTML = '&#x2193; Trending Down';
+    indicator.className = 'trend-down';
+  } else {
+    indicator.innerHTML = '&#x2194; Stable';
+    indicator.className = 'trend-stable';
+  }
+}
+```
+
+---
+
+## Updated Summary
+
+| Endpoint | Use For | Tier |
+|----------|---------|------|
+| `/api/dashboard/true-metrics` | Main KPI dashboard | 1-2 |
+| `/api/analytics/tech-performance` | Tech leaderboard | 3 |
+| `/api/analytics/parts-margin` | Parts profitability analysis | 3 |
+| `/api/analytics/labor-efficiency` | Labor rate analysis | 3 |
+| `/api/analytics/variance-analysis` | Debug TM vs True differences | 3 |
+| `/api/analytics/full-analysis` | Comprehensive reports | 3 |
+| `POST /api/history/snapshot/daily` | Store daily snapshot | 4 |
+| `/api/history/snapshots/daily` | Get historical snapshots | 4 |
+| `/api/history/trends` | Trend analysis | 4 |
+| `/api/history/ro/{ro_id}` | RO history tracking | 4 |
+| `/api/history/compare/periods` | Period comparison | 4 |
+| `/api/history/tech-performance` | Tech performance history | 4 |
