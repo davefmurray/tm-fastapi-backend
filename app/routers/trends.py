@@ -993,3 +993,57 @@ def _generate_alerts(avg_gp: float, slope: float, wow_change: float) -> List[str
         alerts.append({"level": "info", "message": "All metrics within normal range"})
 
     return alerts
+
+
+# =============================================================================
+# DAILY METRICS (for trend chart)
+# =============================================================================
+
+@router.get("/daily")
+async def get_daily_metrics(
+    days: int = Query(7, description="Number of days to return", ge=1, le=30)
+):
+    """
+    Get daily sales and gross profit for trend charting.
+
+    Returns data in format expected by dashboard trend chart:
+    - daily_metrics: Array of {date, sales, gross_profit}
+    """
+    try:
+        client = get_tm_client()
+        shop_id = int(client.shop_id)
+        persistence = get_persistence_service()
+
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days - 1)
+
+        snapshots = await persistence.get_daily_snapshots(shop_id, start_date, end_date)
+
+        if not snapshots:
+            # Return empty array if no historical data
+            return {
+                "daily_metrics": [],
+                "message": "No historical data. Run POST /api/history/snapshot/daily to build data."
+            }
+
+        # Sort by date ascending
+        snapshots.sort(key=lambda x: x.get("snapshot_date", ""))
+
+        daily_metrics = []
+        for snap in snapshots:
+            daily_metrics.append({
+                "date": snap.get("snapshot_date"),
+                "sales": snap.get("total_revenue", 0),
+                "gross_profit": snap.get("total_gp_dollars", 0),
+                "ro_count": snap.get("ro_count", 0),
+                "gp_percent": snap.get("gp_percentage", 0)
+            })
+
+        return {
+            "daily_metrics": daily_metrics,
+            "days_requested": days,
+            "days_returned": len(daily_metrics)
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
