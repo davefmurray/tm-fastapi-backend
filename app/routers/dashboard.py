@@ -645,3 +645,138 @@ async def compare_metrics(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/live")
+async def get_live_authorized_work(
+    start: str = Query(..., description="Start date (YYYY-MM-DD)"),
+    end: str = Query(..., description="End date (YYYY-MM-DD)")
+):
+    """
+    Get LIVE authorized work - jobs sold but not yet invoiced.
+
+    This shows the pipeline/WIP:
+    - Authorized jobs on ACTIVE (WIP) ROs
+    - Filtered by authorization date in range
+    - NOT yet posted/invoiced
+
+    Use this to see "new work sold" in real-time.
+    """
+    tm = get_tm_client()
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
+
+    try:
+        # Only fetch ACTIVE (WIP) board - these are not yet posted
+        active_ros = await tm.get(
+            f"/api/shop/{shop_id}/job-board-group-by",
+            {"board": "ACTIVE", "groupBy": "NONE", "page": 0, "size": 500}
+        )
+
+        start_date = datetime.fromisoformat(start).date()
+        end_date = datetime.fromisoformat(end).date()
+
+        # Track authorized work
+        total_authorized = 0
+        total_labor = 0
+        total_parts = 0
+        total_fees = 0
+        ro_count = 0
+        job_count = 0
+
+        ro_details = []
+
+        for ro in active_ros:
+            try:
+                estimate = await tm.get(f"/api/repair-order/{ro['id']}/estimate")
+
+                ro_authorized = 0
+                ro_labor = 0
+                ro_parts = 0
+                ro_fees = 0
+                ro_jobs = []
+                has_auth_in_range = False
+
+                for job in estimate.get("jobs", []):
+                    if not job.get("authorized"):
+                        continue
+
+                    # Check if authorized in date range
+                    auth_date_str = job.get("authorizedDate")
+                    if auth_date_str:
+                        try:
+                            auth_date = datetime.fromisoformat(
+                                auth_date_str.replace("Z", "+00:00")
+                            ).date()
+                            if start_date <= auth_date <= end_date:
+                                has_auth_in_range = True
+
+                                job_total = job.get("total", 0)
+                                labor_total = sum(l.get("total", 0) for l in job.get("labor", []))
+                                parts_total = sum(p.get("total", 0) for p in job.get("parts", []))
+                                fees_total = sum(f.get("total", 0) for f in job.get("fees", []))
+
+                                ro_authorized += job_total
+                                ro_labor += labor_total
+                                ro_parts += parts_total
+                                ro_fees += fees_total
+                                job_count += 1
+
+                                ro_jobs.append({
+                                    "name": job.get("name", ""),
+                                    "authorized_date": auth_date.isoformat(),
+                                    "total": round(job_total / 100, 2),
+                                    "labor": round(labor_total / 100, 2),
+                                    "parts": round(parts_total / 100, 2)
+                                })
+                        except:
+                            pass
+
+                if has_auth_in_range:
+                    ro_count += 1
+                    total_authorized += ro_authorized
+                    total_labor += ro_labor
+                    total_parts += ro_parts
+                    total_fees += ro_fees
+
+                    # Get customer/vehicle info
+                    customer = estimate.get("customer", {})
+                    vehicle = estimate.get("vehicle", {})
+
+                    ro_details.append({
+                        "ro_number": ro.get("roNumber") or ro.get("repairOrderNumber"),
+                        "ro_id": ro.get("id"),
+                        "customer": f"{customer.get('firstName', '')} {customer.get('lastName', '')}".strip(),
+                        "vehicle": f"{vehicle.get('year', '')} {vehicle.get('make', '')} {vehicle.get('model', '')}".strip(),
+                        "authorized_total": round(ro_authorized / 100, 2),
+                        "jobs": ro_jobs,
+                        "status": "WIP"
+                    })
+
+            except Exception as e:
+                print(f"[Live] Error processing RO {ro.get('id')}: {e}")
+                continue
+
+        # Sort by authorized total descending
+        ro_details.sort(key=lambda x: x["authorized_total"], reverse=True)
+
+        avg_ticket = total_authorized / ro_count if ro_count > 0 else 0
+
+        return {
+            "period": {
+                "start": start,
+                "end": end
+            },
+            "summary": {
+                "total_authorized": round(total_authorized / 100, 2),
+                "labor_total": round(total_labor / 100, 2),
+                "parts_total": round(total_parts / 100, 2),
+                "fees_total": round(total_fees / 100, 2),
+                "ro_count": ro_count,
+                "job_count": job_count,
+                "avg_ticket": round(avg_ticket / 100, 2)
+            },
+            "ros": ro_details[:50],  # Top 50 ROs
+            "source": "LIVE_AUTHORIZED_WIP",
+            "calculated_at": datetime.now().isoformat()
+        }

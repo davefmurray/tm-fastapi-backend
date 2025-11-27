@@ -138,6 +138,10 @@
                         <i data-lucide="crown" class="w-4 h-4"></i>
                         Owner
                     </button>
+                    <button onclick="switchView('live')" id="tab-live" class="px-4 py-2 rounded-md text-sm font-medium text-slate-400 hover:text-white transition-all flex items-center gap-2">
+                        <i data-lucide="zap" class="w-4 h-4"></i>
+                        Live
+                    </button>
                     <button onclick="switchView('advisor')" id="tab-advisor" class="px-4 py-2 rounded-md text-sm font-medium text-slate-400 hover:text-white transition-all flex items-center gap-2">
                         <i data-lucide="users" class="w-4 h-4"></i>
                         Advisors
@@ -325,6 +329,102 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live View (Authorized but not posted) -->
+        <div id="view-live" class="hidden fade-in">
+            <!-- Live KPI Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div class="metric-card rounded-xl p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-slate-400 text-sm font-medium">Work Sold (WIP)</span>
+                        <div class="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center pulse-green">
+                            <i data-lucide="zap" class="w-5 h-5 text-cyan-500"></i>
+                        </div>
+                    </div>
+                    <div>
+                        <p id="live-kpi-authorized" class="text-3xl font-bold text-white">$0</p>
+                        <p id="live-kpi-ro-count" class="text-sm text-slate-400 mt-1">0 ROs in progress</p>
+                    </div>
+                </div>
+
+                <div class="metric-card rounded-xl p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-slate-400 text-sm font-medium">Labor Sold</span>
+                        <div class="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                            <i data-lucide="clock" class="w-5 h-5 text-blue-500"></i>
+                        </div>
+                    </div>
+                    <div>
+                        <p id="live-kpi-labor" class="text-3xl font-bold text-white">$0</p>
+                        <p id="live-kpi-jobs" class="text-sm text-slate-400 mt-1">0 jobs authorized</p>
+                    </div>
+                </div>
+
+                <div class="metric-card rounded-xl p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-slate-400 text-sm font-medium">Parts Sold</span>
+                        <div class="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                            <i data-lucide="package" class="w-5 h-5 text-emerald-500"></i>
+                        </div>
+                    </div>
+                    <div>
+                        <p id="live-kpi-parts" class="text-3xl font-bold text-white">$0</p>
+                        <p class="text-sm text-slate-400 mt-1">Not yet invoiced</p>
+                    </div>
+                </div>
+
+                <div class="metric-card rounded-xl p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-slate-400 text-sm font-medium">Avg Ticket</span>
+                        <div class="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                            <i data-lucide="receipt" class="w-5 h-5 text-purple-500"></i>
+                        </div>
+                    </div>
+                    <div>
+                        <p id="live-kpi-avg" class="text-3xl font-bold text-white">$0</p>
+                        <p id="live-kpi-fees" class="text-sm text-slate-400 mt-1">$0 in fees</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live RO Table -->
+            <div class="glass-card rounded-xl p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                        <i data-lucide="list" class="w-5 h-5 text-cyan-500"></i>
+                        Work In Progress
+                    </h3>
+                    <span id="live-updated" class="text-xs text-slate-500">--</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="text-left text-xs text-slate-400 border-b border-slate-700">
+                                <th class="pb-3 font-medium">RO #</th>
+                                <th class="pb-3 font-medium">Customer</th>
+                                <th class="pb-3 font-medium">Vehicle</th>
+                                <th class="pb-3 font-medium text-right">Authorized</th>
+                                <th class="pb-3 font-medium text-center">Jobs</th>
+                                <th class="pb-3 font-medium text-center">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="live-table-body" class="text-sm">
+                            <tr><td colspan="6" class="py-8 text-center text-slate-400">Loading live data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Info Banner -->
+            <div class="mt-4 p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-lg">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="info" class="w-5 h-5 text-cyan-500"></i>
+                    <span class="text-sm text-slate-300">
+                        <strong class="text-cyan-500">Live View:</strong> Shows authorized work on active ROs that hasn't been invoiced yet. This is your current pipeline/WIP.
+                    </span>
                 </div>
             </div>
         </div>
@@ -580,7 +680,7 @@
             currentView = view;
 
             // Update tabs
-            ['owner', 'advisor', 'tech'].forEach(v => {
+            ['owner', 'live', 'advisor', 'tech'].forEach(v => {
                 const tab = document.getElementById(`tab-${v}`);
                 const viewEl = document.getElementById(`view-${v}`);
 
@@ -617,21 +717,23 @@
             try {
                 // Fetch all data in parallel
                 // Use TM-native profit report for accurate numbers matching TM's Reports page
-                const [profitReport, techPerf, advisorPerf, trends, laborEff, dailyTrends] = await Promise.all([
+                const [profitReport, techPerf, advisorPerf, trends, laborEff, dailyTrends, liveData] = await Promise.all([
                     fetchAPI(`/reports/profit-details?start=${encodeURIComponent(startISO)}&end=${encodeURIComponent(endISO)}&metric=AVG`),
                     fetchAPI(`/analytics/tech-performance?start=${startDate}&end=${endDate}`),
                     fetchAPI(`/advisors/performance?start=${startDate}&end=${endDate}`),
                     fetchAPI(`/trends/summary?days=30`).catch(() => null),
                     fetchAPI(`/analytics/labor-efficiency?start=${startDate}&end=${endDate}`),
-                    fetchAPI(`/trends/daily?days=7`).catch(() => null)
+                    fetchAPI(`/trends/daily?days=7`).catch(() => null),
+                    fetchAPI(`/dashboard/live?start=${startDate}&end=${endDate}`).catch(() => null)
                 ]);
 
                 // Transform profit report to metrics format expected by views
                 const metrics = transformProfitReport(profitReport);
 
-                currentData = { metrics, techPerf, advisorPerf, trends, laborEff, dailyTrends };
+                currentData = { metrics, techPerf, advisorPerf, trends, laborEff, dailyTrends, liveData };
 
                 updateOwnerView(metrics, laborEff, trends);
+                updateLiveView(liveData);
                 updateAdvisorView(advisorPerf);
                 updateTechView(techPerf, laborEff);
                 updateTrendChart(dailyTrends);
@@ -701,7 +803,10 @@
 
         function showLoading(show) {
             document.getElementById('loading-state').classList.toggle('hidden', !show);
-            document.getElementById(`view-${currentView}`).classList.toggle('hidden', show);
+            const viewEl = document.getElementById(`view-${currentView}`);
+            if (viewEl) {
+                viewEl.classList.toggle('hidden', show);
+            }
         }
 
         // =============================================================================
@@ -790,6 +895,64 @@
                     cutout: '65%'
                 }
             });
+        }
+
+        // =============================================================================
+        // LIVE VIEW (Authorized but not posted)
+        // =============================================================================
+        function updateLiveView(data) {
+            if (!data || !data.summary) {
+                document.getElementById('live-table-body').innerHTML =
+                    '<tr><td colspan="6" class="py-8 text-center text-slate-400">No live data available</td></tr>';
+                return;
+            }
+
+            const s = data.summary;
+
+            // Update KPIs
+            document.getElementById('live-kpi-authorized').textContent = formatCurrency(s.total_authorized);
+            document.getElementById('live-kpi-ro-count').textContent = `${s.ro_count} ROs in progress`;
+            document.getElementById('live-kpi-labor').textContent = formatCurrency(s.labor_total);
+            document.getElementById('live-kpi-jobs').textContent = `${s.job_count} jobs authorized`;
+            document.getElementById('live-kpi-parts').textContent = formatCurrency(s.parts_total);
+            document.getElementById('live-kpi-avg').textContent = formatCurrency(s.avg_ticket);
+            document.getElementById('live-kpi-fees').textContent = `${formatCurrency(s.fees_total)} in fees`;
+
+            // Update timestamp
+            if (data.calculated_at) {
+                const calcTime = new Date(data.calculated_at).toLocaleTimeString();
+                document.getElementById('live-updated').textContent = `Updated: ${calcTime}`;
+            }
+
+            // Update RO table
+            const tbody = document.getElementById('live-table-body');
+            const ros = data.ros || [];
+
+            if (ros.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="py-8 text-center text-slate-400">No authorized work in progress</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = ros.map(ro => `
+                <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+                    <td class="py-3">
+                        <span class="font-medium text-cyan-400">#${ro.ro_number || ro.ro_id}</span>
+                    </td>
+                    <td class="py-3 text-white">${ro.customer || 'Unknown'}</td>
+                    <td class="py-3 text-slate-300">${ro.vehicle || 'N/A'}</td>
+                    <td class="py-3 text-right font-bold text-white">${formatCurrency(ro.authorized_total)}</td>
+                    <td class="py-3 text-center">
+                        <span class="px-2 py-1 bg-slate-700 rounded text-xs">${ro.jobs?.length || 0}</span>
+                    </td>
+                    <td class="py-3 text-center">
+                        <span class="px-2 py-1 rounded text-xs font-medium bg-cyan-500/20 text-cyan-500">
+                            ${ro.status || 'WIP'}
+                        </span>
+                    </td>
+                </tr>
+            `).join('');
+
+            lucide.createIcons();
         }
 
         // =============================================================================
