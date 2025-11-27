@@ -688,12 +688,13 @@ async def audit_today_ros(
                     if issue_type in result["issues"]["by_type"]:
                         result["issues"]["by_type"][issue_type] += 1
 
-    # Calculate aggregate GP%
-    total_auth_rev = result["totals"]["authorized"]["revenue"]
+# Calculate aggregate GP% using profit_labor revenue (source of truth)
+    # We cannot use our calculated revenue because profit comes from profit/labor endpoint
+    total_pl_revenue = sum(ro["endpoints"]["profit_labor_total"] for ro in result["ros"])
     total_auth_profit = result["totals"]["authorized"]["profit"]
-    if total_auth_rev > 0:
+    if total_pl_revenue > 0:
         result["totals"]["authorized"]["gp_percent"] = round(
-            (total_auth_profit / total_auth_rev) * 100, 2
+            (total_auth_profit / total_pl_revenue) * 100, 2
         )
 
     # Sort ROs by authorized revenue descending
