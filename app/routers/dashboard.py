@@ -9,6 +9,11 @@ Tier 1 Implementation:
 - Fix 1.3: Fee inclusion in GP
 - Fix 1.4: Discount handling
 - Fix 1.5: Date-filtered true metrics endpoint
+
+Tier 2 Implementation:
+- Fix 2.3: Tax attribution by category
+- Fix 2.4: Fee breakdown with categorization
+- Fix 2.5: Caching for shop config and tech rates
 """
 
 from fastapi import APIRouter, HTTPException, Query
@@ -17,8 +22,11 @@ from typing import Optional, List
 from app.services.tm_client import get_tm_client
 from app.services.gp_calculator import (
     calculate_ro_true_gp,
+    get_shop_config,
     get_shop_average_tech_rate,
-    to_dict
+    to_dict,
+    to_dollars_dict,
+    cents_to_dollars
 )
 
 router = APIRouter()
@@ -286,14 +294,17 @@ async def get_true_metrics(
     include_details: bool = Query(False, description="Include per-RO breakdown")
 ):
     """
-    Get TRUE gross profit metrics using Tier 1 calculation engine.
+    Get TRUE gross profit metrics using Tier 2 calculation engine.
 
-    This endpoint applies all Tier 1 fixes:
+    This endpoint applies all Tier 1 + Tier 2 fixes:
     - Fix 1.1: Quantity-aware parts profit (handles TM API inconsistencies)
     - Fix 1.2: Tech rate fallback (assigned -> shop avg -> $25 default)
     - Fix 1.3: Fee inclusion (shop supplies, environmental at 100% margin)
     - Fix 1.4: Discount handling (job-level and RO-level)
     - Fix 1.5: Date filtering by job authorization date
+    - Fix 2.3: Tax attribution by category (parts, labor, fees, sublet)
+    - Fix 2.4: Fee breakdown with categorization
+    - Fix 2.5: Caching for shop config (5-minute TTL)
 
     Returns:
     - sales: Total authorized sales (before tax)
@@ -302,13 +313,16 @@ async def get_true_metrics(
     - aro: Average repair order value
     - car_count: Unique ROs with authorized jobs in range
     - fee_profit: Total profit from fees (100% margin)
+    - tax_breakdown: Tax attributed by category (parts, labor, fees, sublet)
+    - fee_breakdown: Fees categorized (shop_supplies, environmental, etc.)
     """
     tm = get_tm_client()
     await tm._ensure_token()
     shop_id = tm.get_shop_id()
 
     try:
-        shop_avg_rate = await get_shop_average_tech_rate(tm, shop_id)
+        # Tier 2: Use cached shop config
+        shop_config = await get_shop_config(tm, shop_id)
 
         all_ros = []
         for board in ["ACTIVE", "POSTED", "COMPLETE"]:
@@ -336,11 +350,32 @@ async def get_true_metrics(
                 except:
                     pass
 
+        # Aggregates
         total_sales = 0
         total_cost = 0
         total_gp = 0
         total_fee_profit = 0
         total_discount = 0
+
+        # Tier 2: Category breakdowns
+        total_parts_retail = 0
+        total_parts_cost = 0
+        total_labor_retail = 0
+        total_labor_cost = 0
+        total_sublet_retail = 0
+        total_sublet_cost = 0
+
+        # Tier 2: Tax aggregates
+        agg_parts_tax = 0
+        agg_labor_tax = 0
+        agg_fees_tax = 0
+        agg_sublet_tax = 0
+        agg_total_tax = 0
+
+        # Tier 2: Fee category aggregates
+        fee_by_category = {}
+        total_fees = 0
+
         ro_details = []
         ro_ids_counted = set()
 
@@ -364,9 +399,10 @@ async def get_true_metrics(
                 if not has_auth_in_range:
                     continue
 
+                # Tier 2: Use ShopConfig
                 ro_gp = calculate_ro_true_gp(
                     estimate,
-                    shop_average_rate=shop_avg_rate,
+                    shop_config=shop_config,
                     authorized_only=True
                 )
 
@@ -378,8 +414,30 @@ async def get_true_metrics(
                     total_fee_profit += ro_gp.fee_profit
                     total_discount += ro_gp.discount_total
 
+                    # Tier 2: Category breakdowns
+                    total_parts_retail += ro_gp.parts_retail
+                    total_parts_cost += ro_gp.parts_cost
+                    total_labor_retail += ro_gp.labor_retail
+                    total_labor_cost += ro_gp.labor_cost
+                    total_sublet_retail += ro_gp.sublet_retail
+                    total_sublet_cost += ro_gp.sublet_cost
+
+                    # Tier 2: Tax aggregates
+                    if ro_gp.tax_breakdown:
+                        agg_parts_tax += ro_gp.tax_breakdown.parts_tax
+                        agg_labor_tax += ro_gp.tax_breakdown.labor_tax
+                        agg_fees_tax += ro_gp.tax_breakdown.fees_tax
+                        agg_sublet_tax += ro_gp.tax_breakdown.sublet_tax
+                        agg_total_tax += ro_gp.tax_breakdown.total_tax
+
+                    # Tier 2: Fee category aggregates
+                    if ro_gp.fee_breakdown:
+                        total_fees += ro_gp.fee_breakdown.total_fees
+                        for cat, amt in ro_gp.fee_breakdown.by_category.items():
+                            fee_by_category[cat] = fee_by_category.get(cat, 0) + amt
+
                     if include_details:
-                        ro_details.append(to_dict(ro_gp))
+                        ro_details.append(to_dollars_dict(ro_gp))
 
             except Exception as e:
                 print(f"[True Metrics] Error processing RO {ro.get('id')}: {e}")
@@ -392,28 +450,65 @@ async def get_true_metrics(
         response = {
             "date_range": {"start": start, "end": end},
             "metrics": {
-                "sales": round(total_sales / 100, 2),
-                "cost": round(total_cost / 100, 2),
-                "gross_profit": round(total_gp / 100, 2),
+                "sales": cents_to_dollars(total_sales),
+                "cost": cents_to_dollars(total_cost),
+                "gross_profit": cents_to_dollars(total_gp),
                 "gp_percentage": round(gp_pct, 2),
-                "aro": round(aro / 100, 2),
+                "aro": cents_to_dollars(aro),
                 "car_count": car_count,
-                "fee_profit": round(total_fee_profit / 100, 2),
-                "discount_total": round(total_discount / 100, 2)
+                "fee_profit": cents_to_dollars(total_fee_profit),
+                "discount_total": cents_to_dollars(total_discount)
+            },
+            # Tier 2: Category breakdown
+            "parts_summary": {
+                "retail": cents_to_dollars(total_parts_retail),
+                "cost": cents_to_dollars(total_parts_cost),
+                "profit": cents_to_dollars(total_parts_retail - total_parts_cost),
+                "margin_pct": round((total_parts_retail - total_parts_cost) / total_parts_retail * 100, 2) if total_parts_retail > 0 else 0
+            },
+            "labor_summary": {
+                "retail": cents_to_dollars(total_labor_retail),
+                "cost": cents_to_dollars(total_labor_cost),
+                "profit": cents_to_dollars(total_labor_retail - total_labor_cost),
+                "margin_pct": round((total_labor_retail - total_labor_cost) / total_labor_retail * 100, 2) if total_labor_retail > 0 else 0
+            },
+            "sublet_summary": {
+                "retail": cents_to_dollars(total_sublet_retail),
+                "cost": cents_to_dollars(total_sublet_cost),
+                "profit": cents_to_dollars(total_sublet_retail - total_sublet_cost),
+                "margin_pct": round((total_sublet_retail - total_sublet_cost) / total_sublet_retail * 100, 2) if total_sublet_retail > 0 else 0
+            },
+            # Tier 2: Tax breakdown
+            "tax_breakdown": {
+                "parts_tax": cents_to_dollars(agg_parts_tax),
+                "labor_tax": cents_to_dollars(agg_labor_tax),
+                "fees_tax": cents_to_dollars(agg_fees_tax),
+                "sublet_tax": cents_to_dollars(agg_sublet_tax),
+                "total_tax": cents_to_dollars(agg_total_tax)
+            },
+            # Tier 2: Fee breakdown
+            "fee_breakdown": {
+                "total_fees": cents_to_dollars(total_fees),
+                "by_category": {k: cents_to_dollars(v) for k, v in fee_by_category.items()}
             },
             "calculation_info": {
-                "shop_avg_tech_rate": round(shop_avg_rate / 100, 2),
+                "shop_avg_tech_rate": cents_to_dollars(shop_config.avg_tech_rate),
+                "tech_count": len(shop_config.tech_rates),
+                "cache_status": "hit" if shop_config.cached_at else "miss",
                 "ros_processed": len(recent_ros),
                 "ros_with_auth_in_range": car_count,
                 "fixes_applied": [
                     "Fix 1.1: Quantity-aware parts profit",
-                    f"Fix 1.2: Tech rate fallback (shop avg: ${shop_avg_rate / 100:.2f}/hr)",
+                    f"Fix 1.2: Tech rate fallback (shop avg: ${shop_config.avg_tech_rate / 100:.2f}/hr)",
                     "Fix 1.3: Fee inclusion (100% margin)",
                     "Fix 1.4: Discount handling",
-                    "Fix 1.5: Date filtering by auth date"
+                    "Fix 1.5: Date filtering by auth date",
+                    "Fix 2.3: Tax attribution by category",
+                    "Fix 2.4: Fee categorization",
+                    "Fix 2.5: Shop config caching (5min TTL)"
                 ]
             },
-            "source": "TRUE_GP_TIER1",
+            "source": "TRUE_GP_TIER2",
             "calculated_at": datetime.now().isoformat()
         }
 
@@ -436,7 +531,7 @@ async def compare_metrics(
 
     Shows the difference between:
     1. TM's dashboard aggregates (may have issues)
-    2. Our Tier 1 true GP calculation
+    2. Our Tier 2 true GP calculation
     """
     tm = get_tm_client()
     await tm._ensure_token()
@@ -462,7 +557,8 @@ async def compare_metrics(
 
         tm_summary = await tm.get("/api/reporting/shop-dashboard/aggregate/summary", tm_params)
 
-        shop_avg_rate = await get_shop_average_tech_rate(tm, shop_id)
+        # Tier 2: Use cached shop config
+        shop_config = await get_shop_config(tm, shop_id)
 
         all_ros = []
         for board in ["ACTIVE", "POSTED", "COMPLETE"]:
@@ -506,7 +602,8 @@ async def compare_metrics(
                 if not has_auth_in_range:
                     continue
 
-                ro_gp = calculate_ro_true_gp(estimate, shop_avg_rate, True)
+                # Tier 2: Use ShopConfig
+                ro_gp = calculate_ro_true_gp(estimate, shop_config=shop_config, authorized_only=True)
                 if ro_gp.total_retail > 0:
                     ro_ids.add(ro["id"])
                     total_sales += ro_gp.total_retail
@@ -531,17 +628,18 @@ async def compare_metrics(
                 "note": "TM aggregates may include lifetime data or have date filtering issues"
             },
             "true_metrics": {
-                "sales": round(total_sales / 100, 2),
-                "gross_profit": round(total_gp / 100, 2),
+                "sales": cents_to_dollars(total_sales),
+                "gross_profit": cents_to_dollars(total_gp),
                 "gp_percentage": round(true_gp_pct, 2),
                 "car_count": car_count,
-                "average_ro": round(true_aro / 100, 2)
+                "average_ro": cents_to_dollars(true_aro)
             },
             "deltas": {
-                "sales_diff": round((total_sales / 100) - tm_sold, 2),
+                "sales_diff": round(cents_to_dollars(total_sales) - tm_sold, 2),
                 "car_count_diff": car_count - tm_car_count,
-                "aro_diff": round((true_aro / 100) - tm_aro, 2)
+                "aro_diff": round(cents_to_dollars(true_aro) - tm_aro, 2)
             },
+            "source": "TRUE_GP_TIER2",
             "calculated_at": datetime.now().isoformat()
         }
 
