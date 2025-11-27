@@ -2,12 +2,24 @@
 Dashboard Endpoints
 
 Custom dashboard with accurate metric calculations from raw TM data.
+
+Tier 1 Implementation:
+- Fix 1.1: Quantity-aware parts profit
+- Fix 1.2: Tech rate fallback logic
+- Fix 1.3: Fee inclusion in GP
+- Fix 1.4: Discount handling
+- Fix 1.5: Date-filtered true metrics endpoint
 """
 
 from fastapi import APIRouter, HTTPException, Query
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, List
 from app.services.tm_client import get_tm_client
+from app.services.gp_calculator import (
+    calculate_ro_true_gp,
+    get_shop_average_tech_rate,
+    to_dict
+)
 
 router = APIRouter()
 
@@ -174,14 +186,9 @@ async def get_accurate_authorized_metrics(
     end: str = Query(..., description="End date (YYYY-MM-DD)")
 ):
     """
-    Get ACCURATE metrics based on AUTHORIZED sales only
+    Get ACCURATE metrics based on AUTHORIZED sales only (legacy endpoint)
 
-    Calculates from raw data:
-    - Sales (authorized jobs total)
-    - GP$ (gross profit dollars)
-    - GP% (gross profit percentage)
-    - ARO (average repair order)
-    - Car Count (ROs created in date range)
+    NOTE: Use /true-metrics for Tier 1 corrected calculations.
 
     - **start**: Start date (YYYY-MM-DD)
     - **end**: End date (YYYY-MM-DD)
@@ -204,7 +211,7 @@ async def get_accurate_authorized_metrics(
             except:
                 pass
 
-        # Filter to ROs updated in date range (optimization - ROs with today's auth usually updated today)
+        # Filter to ROs updated in date range
         start_date = datetime.fromisoformat(start).date()
         end_date = datetime.fromisoformat(end).date()
 
@@ -213,7 +220,6 @@ async def get_accurate_authorized_metrics(
         for ro in all_ros:
             if ro.get("updatedDate"):
                 updated_date = datetime.fromisoformat(ro["updatedDate"].replace("Z", "+00:00")).date()
-                # Include ROs updated within 7 days of the date range
                 if (start_date - timedelta(days=7)) <= updated_date <= (end_date + timedelta(days=1)):
                     recent_ros.append(ro)
 
@@ -221,70 +227,321 @@ async def get_accurate_authorized_metrics(
         total_sales = 0
         total_subtotal = 0
         total_gp_dollars = 0
-        ro_count = 0
         ro_ids_with_auth = set()
 
         for ro in recent_ros:
             try:
-                # Get estimate
                 estimate = await tm.get(f"/api/repair-order/{ro['id']}/estimate")
-
-                # Check each job's authorization date
                 ro_has_authorized_jobs_in_range = False
 
                 for job in estimate.get("jobs", []):
-                    # Only count jobs authorized in the date range
                     if job.get("authorized") == True and job.get("authorizedDate"):
                         auth_date = datetime.fromisoformat(job["authorizedDate"].replace("Z", "+00:00")).date()
-
                         if start_date <= auth_date <= end_date:
-                            # Job was authorized in our date range!
                             total_sales += job.get("total", 0)
                             total_subtotal += job.get("subtotal", 0)
                             total_gp_dollars += job.get("grossProfitAmount", 0)
                             ro_has_authorized_jobs_in_range = True
 
-                # Count unique ROs (car count)
                 if ro_has_authorized_jobs_in_range:
                     ro_ids_with_auth.add(ro["id"])
-
             except:
-                # Skip ROs with errors
                 continue
 
         ro_count = len(ro_ids_with_auth)
 
-        # Add RO-level fees/taxes if RO has authorized jobs
-        # For simplicity, distribute proportionally (could be improved)
         if ro_count > 0:
-            # Re-process to get authorizedTotal and add delta
             for ro in recent_ros:
                 if ro["id"] in ro_ids_with_auth:
                     try:
                         estimate = await tm.get(f"/api/repair-order/{ro['id']}/estimate")
-                        # Add difference between authorizedTotal and job totals (fees/taxes)
                         auth_total = estimate.get("authorizedTotal", 0)
                         job_total_sum = sum(j.get("total", 0) for j in estimate.get("jobs", []) if j.get("authorized") == True)
                         total_sales += (auth_total - job_total_sum)
                     except:
                         pass
 
-        # Calculate metrics
-        # GP% calculated on SUBTOTAL (before taxes) - matches TM formula
         gp_percentage = (total_gp_dollars / total_subtotal * 100) if total_subtotal > 0 else 0
         aro = (total_sales / ro_count) if ro_count > 0 else 0
 
         return {
-            "date_range": {
-                "start": start,
-                "end": end
-            },
-            "sales": round(total_sales / 100, 2),          # Convert to dollars
+            "date_range": {"start": start, "end": end},
+            "sales": round(total_sales / 100, 2),
             "gp_dollars": round(total_gp_dollars / 100, 2),
             "gp_percentage": round(gp_percentage, 2),
             "aro": round(aro / 100, 2),
             "car_count": ro_count,
             "source": "AUTHORIZED_JOBS_ONLY",
+            "calculated_at": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/true-metrics")
+async def get_true_metrics(
+    start: str = Query(..., description="Start date (YYYY-MM-DD)"),
+    end: str = Query(..., description="End date (YYYY-MM-DD)"),
+    include_details: bool = Query(False, description="Include per-RO breakdown")
+):
+    """
+    Get TRUE gross profit metrics using Tier 1 calculation engine.
+
+    This endpoint applies all Tier 1 fixes:
+    - Fix 1.1: Quantity-aware parts profit (handles TM API inconsistencies)
+    - Fix 1.2: Tech rate fallback (assigned -> shop avg -> $25 default)
+    - Fix 1.3: Fee inclusion (shop supplies, environmental at 100% margin)
+    - Fix 1.4: Discount handling (job-level and RO-level)
+    - Fix 1.5: Date filtering by job authorization date
+
+    Returns:
+    - sales: Total authorized sales (before tax)
+    - gross_profit: True GP including fees, with correct tech costs
+    - gp_percentage: GP% calculated on subtotal
+    - aro: Average repair order value
+    - car_count: Unique ROs with authorized jobs in range
+    - fee_profit: Total profit from fees (100% margin)
+    """
+    tm = get_tm_client()
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
+
+    try:
+        shop_avg_rate = await get_shop_average_tech_rate(tm, shop_id)
+
+        all_ros = []
+        for board in ["ACTIVE", "POSTED", "COMPLETE"]:
+            try:
+                ros_page = await tm.get(
+                    f"/api/shop/{shop_id}/job-board-group-by",
+                    {"board": board, "groupBy": "NONE", "page": 0, "size": 200}
+                )
+                all_ros.extend(ros_page)
+            except:
+                pass
+
+        start_date = datetime.fromisoformat(start).date()
+        end_date = datetime.fromisoformat(end).date()
+
+        recent_ros = []
+        for ro in all_ros:
+            if ro.get("updatedDate"):
+                try:
+                    updated_date = datetime.fromisoformat(
+                        ro["updatedDate"].replace("Z", "+00:00")
+                    ).date()
+                    if (start_date - timedelta(days=14)) <= updated_date <= (end_date + timedelta(days=1)):
+                        recent_ros.append(ro)
+                except:
+                    pass
+
+        total_sales = 0
+        total_cost = 0
+        total_gp = 0
+        total_fee_profit = 0
+        total_discount = 0
+        ro_details = []
+        ro_ids_counted = set()
+
+        for ro in recent_ros:
+            try:
+                estimate = await tm.get(f"/api/repair-order/{ro['id']}/estimate")
+
+                has_auth_in_range = False
+                for job in estimate.get("jobs", []):
+                    if job.get("authorized") and job.get("authorizedDate"):
+                        try:
+                            auth_date = datetime.fromisoformat(
+                                job["authorizedDate"].replace("Z", "+00:00")
+                            ).date()
+                            if start_date <= auth_date <= end_date:
+                                has_auth_in_range = True
+                                break
+                        except:
+                            pass
+
+                if not has_auth_in_range:
+                    continue
+
+                ro_gp = calculate_ro_true_gp(
+                    estimate,
+                    shop_average_rate=shop_avg_rate,
+                    authorized_only=True
+                )
+
+                if ro_gp.total_retail > 0:
+                    ro_ids_counted.add(ro["id"])
+                    total_sales += ro_gp.total_retail
+                    total_cost += ro_gp.total_cost
+                    total_gp += ro_gp.gross_profit
+                    total_fee_profit += ro_gp.fee_profit
+                    total_discount += ro_gp.discount_total
+
+                    if include_details:
+                        ro_details.append(to_dict(ro_gp))
+
+            except Exception as e:
+                print(f"[True Metrics] Error processing RO {ro.get('id')}: {e}")
+                continue
+
+        car_count = len(ro_ids_counted)
+        gp_pct = (total_gp / total_sales * 100) if total_sales > 0 else 0
+        aro = (total_sales / car_count) if car_count > 0 else 0
+
+        response = {
+            "date_range": {"start": start, "end": end},
+            "metrics": {
+                "sales": round(total_sales / 100, 2),
+                "cost": round(total_cost / 100, 2),
+                "gross_profit": round(total_gp / 100, 2),
+                "gp_percentage": round(gp_pct, 2),
+                "aro": round(aro / 100, 2),
+                "car_count": car_count,
+                "fee_profit": round(total_fee_profit / 100, 2),
+                "discount_total": round(total_discount / 100, 2)
+            },
+            "calculation_info": {
+                "shop_avg_tech_rate": round(shop_avg_rate / 100, 2),
+                "ros_processed": len(recent_ros),
+                "ros_with_auth_in_range": car_count,
+                "fixes_applied": [
+                    "Fix 1.1: Quantity-aware parts profit",
+                    f"Fix 1.2: Tech rate fallback (shop avg: ${shop_avg_rate / 100:.2f}/hr)",
+                    "Fix 1.3: Fee inclusion (100% margin)",
+                    "Fix 1.4: Discount handling",
+                    "Fix 1.5: Date filtering by auth date"
+                ]
+            },
+            "source": "TRUE_GP_TIER1",
+            "calculated_at": datetime.now().isoformat()
+        }
+
+        if include_details:
+            response["ro_details"] = ro_details
+
+        return response
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/compare-metrics")
+async def compare_metrics(
+    start: str = Query(..., description="Start date (YYYY-MM-DD)"),
+    end: str = Query(..., description="End date (YYYY-MM-DD)")
+):
+    """
+    Compare TM aggregate metrics vs TRUE calculated metrics.
+
+    Shows the difference between:
+    1. TM's dashboard aggregates (may have issues)
+    2. Our Tier 1 true GP calculation
+    """
+    tm = get_tm_client()
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
+
+    try:
+        from datetime import timezone as tz
+        offset = timedelta(hours=-5)
+        tzinfo = tz(offset)
+
+        start_dt = datetime.fromisoformat(start).replace(hour=0, minute=0, second=0, tzinfo=tzinfo)
+        end_dt = datetime.fromisoformat(end).replace(hour=23, minute=59, second=59, tzinfo=tzinfo)
+
+        tm_params = {
+            "viewType": "JOBBOARDPOSTED",
+            "metric": "SALES",
+            "shopIds": shop_id,
+            "start": start_dt.isoformat(),
+            "end": end_dt.isoformat(),
+            "timezone": "America/New_York",
+            "useCustomRoLabel": "true"
+        }
+
+        tm_summary = await tm.get("/api/reporting/shop-dashboard/aggregate/summary", tm_params)
+
+        shop_avg_rate = await get_shop_average_tech_rate(tm, shop_id)
+
+        all_ros = []
+        for board in ["ACTIVE", "POSTED", "COMPLETE"]:
+            try:
+                ros_page = await tm.get(
+                    f"/api/shop/{shop_id}/job-board-group-by",
+                    {"board": board, "groupBy": "NONE", "page": 0, "size": 200}
+                )
+                all_ros.extend(ros_page)
+            except:
+                pass
+
+        start_date = datetime.fromisoformat(start).date()
+        end_date = datetime.fromisoformat(end).date()
+
+        total_sales = 0
+        total_gp = 0
+        ro_ids = set()
+
+        for ro in all_ros:
+            if not ro.get("updatedDate"):
+                continue
+            try:
+                updated_date = datetime.fromisoformat(ro["updatedDate"].replace("Z", "+00:00")).date()
+                if not ((start_date - timedelta(days=14)) <= updated_date <= (end_date + timedelta(days=1))):
+                    continue
+
+                estimate = await tm.get(f"/api/repair-order/{ro['id']}/estimate")
+
+                has_auth_in_range = False
+                for job in estimate.get("jobs", []):
+                    if job.get("authorized") and job.get("authorizedDate"):
+                        try:
+                            auth_date = datetime.fromisoformat(job["authorizedDate"].replace("Z", "+00:00")).date()
+                            if start_date <= auth_date <= end_date:
+                                has_auth_in_range = True
+                                break
+                        except:
+                            pass
+
+                if not has_auth_in_range:
+                    continue
+
+                ro_gp = calculate_ro_true_gp(estimate, shop_avg_rate, True)
+                if ro_gp.total_retail > 0:
+                    ro_ids.add(ro["id"])
+                    total_sales += ro_gp.total_retail
+                    total_gp += ro_gp.gross_profit
+            except:
+                continue
+
+        car_count = len(ro_ids)
+        true_gp_pct = (total_gp / total_sales * 100) if total_sales > 0 else 0
+        true_aro = (total_sales / car_count) if car_count > 0 else 0
+
+        tm_sold = tm_summary.get("sold", 0) / 100
+        tm_car_count = tm_summary.get("carCount", 0)
+        tm_aro = tm_summary.get("averageRo", 0)
+
+        return {
+            "date_range": {"start": start, "end": end},
+            "tm_aggregates": {
+                "sold": tm_sold,
+                "car_count": tm_car_count,
+                "average_ro": tm_aro,
+                "note": "TM aggregates may include lifetime data or have date filtering issues"
+            },
+            "true_metrics": {
+                "sales": round(total_sales / 100, 2),
+                "gross_profit": round(total_gp / 100, 2),
+                "gp_percentage": round(true_gp_pct, 2),
+                "car_count": car_count,
+                "average_ro": round(true_aro / 100, 2)
+            },
+            "deltas": {
+                "sales_diff": round((total_sales / 100) - tm_sold, 2),
+                "car_count_diff": car_count - tm_car_count,
+                "aro_diff": round((true_aro / 100) - tm_aro, 2)
+            },
             "calculated_at": datetime.now().isoformat()
         }
 
