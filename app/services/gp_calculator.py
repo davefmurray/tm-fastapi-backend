@@ -29,6 +29,26 @@ DEFAULT_TAX_RATE = 0.075  # 7.5%
 CACHE_TTL_SECONDS = 300  # 5 minutes
 
 
+def safe_int(value: Any, default: int = 0) -> int:
+    """Safely convert a value to int, handling None and invalid types."""
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+
+def safe_float(value: Any, default: float = 0.0) -> float:
+    """Safely convert a value to float, handling None and invalid types."""
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
+
 # ============== Tier 2: Fee Categories ==============
 
 def classify_fee(fee_name: str) -> str:
@@ -293,10 +313,10 @@ def detect_cost_format(part: dict) -> Tuple[int, int, str]:
     Detect if part cost is per-unit or already multiplied by quantity.
     Returns: (cost_per_unit, retail_per_unit, detection_method)
     """
-    cost = int(part.get('cost', 0))
-    retail = int(part.get('retail', 0))
-    quantity = float(part.get('quantity', 1.0))
-    total_field = int(part.get('total', 0))
+    cost = safe_int(part.get('cost'), 0)
+    retail = safe_int(part.get('retail'), 0)
+    quantity = safe_float(part.get('quantity'), 1.0)
+    total_field = safe_int(part.get('total'), 0)
 
     if quantity <= 0:
         quantity = 1.0
@@ -315,7 +335,7 @@ def calculate_part_profit(part: dict) -> PartProfit:
     """Calculate part profit with quantity awareness (Fix 1.1)."""
     part_id = part.get('id', 0)
     name = part.get('name', 'Unknown Part')
-    quantity = float(part.get('quantity', 1.0))
+    quantity = safe_float(part.get('quantity'), 1.0)
 
     if quantity <= 0:
         quantity = 1.0
@@ -350,8 +370,8 @@ def calculate_labor_cost(
     """
     labor_id = labor.get('id', 0)
     name = labor.get('name', 'Labor')
-    hours = float(labor.get('hours', 0))
-    rate = int(labor.get('rate', 0))
+    hours = safe_float(labor.get('hours'), 0.0)
+    rate = safe_int(labor.get('rate'), 0)
 
     tech_rate = 0
     tech_rate_source = 'default'
@@ -361,7 +381,7 @@ def calculate_labor_cost(
     if technician:
         tech_id = technician.get('id')
         if technician.get('hourlyRate'):
-            tech_rate = int(technician['hourlyRate'])
+            tech_rate = safe_int(technician.get('hourlyRate'), 0)
             tech_rate_source = 'assigned'
             tech_name = f"{technician.get('firstName', '')} {technician.get('lastName', '')}".strip()
         elif shop_config and tech_id in shop_config.tech_rates:
@@ -402,8 +422,8 @@ def calculate_fee_detail(fee: dict, subtotal: int) -> FeeDetail:
     Tier 2: Calculate fee with categorization.
     """
     fee_name = fee.get('name', 'Fee')
-    percentage = float(fee.get('percentage', 0))
-    cap = int(fee.get('cap', 0))
+    percentage = safe_float(fee.get('percentage'), 0.0)
+    cap = safe_int(fee.get('cap'), 0)
     taxable = fee.get('taxable', False)
     category = classify_fee(fee_name)
 
@@ -411,7 +431,7 @@ def calculate_fee_detail(fee: dict, subtotal: int) -> FeeDetail:
         calculated = int(subtotal * percentage / 100)
         amount = min(calculated, cap) if cap > 0 else calculated
     else:
-        amount = int(fee.get('amount', 0))
+        amount = safe_int(fee.get('amount'), 0)
 
     return FeeDetail(
         fee_name=fee_name,
@@ -457,20 +477,20 @@ def calculate_tax_breakdown(estimate: dict, parts_retail: int, labor_retail: int
     
     Uses per-job tax fields if available, otherwise estimates from tax rate.
     """
-    total_tax = int(estimate.get('tax', 0))
-    tax_rate = float(estimate.get('taxRate', DEFAULT_TAX_RATE))
-    
+    total_tax = safe_int(estimate.get('tax'), 0)
+    tax_rate = safe_float(estimate.get('taxRate'), DEFAULT_TAX_RATE)
+
     # Try to get per-job breakdown
     parts_tax = 0
     labor_tax = 0
     fees_tax = 0
     sublet_tax = 0
-    
+
     for job in estimate.get('jobs', []):
         if job.get('authorized'):
-            parts_tax += int(job.get('partsTaxTotal', 0))
-            labor_tax += int(job.get('laborTaxTotal', 0))
-            fees_tax += int(job.get('feesTaxTotal', 0))
+            parts_tax += safe_int(job.get('partsTaxTotal'), 0)
+            labor_tax += safe_int(job.get('laborTaxTotal'), 0)
+            fees_tax += safe_int(job.get('feesTaxTotal'), 0)
     
     # If breakdown available, use it
     attributed_tax = parts_tax + labor_tax + fees_tax
@@ -502,8 +522,8 @@ def calculate_sublet_profit(sublet: dict) -> SubletProfit:
     sublet_id = sublet.get('id', 0)
     name = sublet.get('name', 'Sublet')
     vendor = sublet.get('vendor', {}).get('name') if sublet.get('vendor') else None
-    retail = int(sublet.get('retail', 0))
-    cost = int(sublet.get('cost', 0))
+    retail = safe_int(sublet.get('retail'), 0)
+    cost = safe_int(sublet.get('cost'), 0)
     profit = retail - cost
     margin_pct = (profit / retail * 100) if retail > 0 else 0.0
     
@@ -562,7 +582,7 @@ def calculate_job_gp(
     sublet_profit = sublet_retail - sublet_cost
 
     # Discount
-    discount_amount = int(job.get('discount', 0))
+    discount_amount = safe_int(job.get('discount'), 0)
 
     # Subtotal and GP
     subtotal = parts_retail + labor_retail + sublet_retail - discount_amount
@@ -683,7 +703,7 @@ def calculate_ro_true_gp(
             notes.append(f"Fee '{fd.fee_name}' ({fd.category}): ${fd.amount/100:.2f}")
 
     # RO-level discount
-    ro_discount = int(estimate.get('discount', 0))
+    ro_discount = safe_int(estimate.get('discount'), 0)
     total_discount = job_discounts + ro_discount
     if ro_discount > 0:
         notes.append(f"RO-level discount: ${ro_discount/100:.2f}")
@@ -707,7 +727,7 @@ def calculate_ro_true_gp(
     )
 
     # Balance due
-    balance_due = int(estimate.get('balanceDue', 0))
+    balance_due = safe_int(estimate.get('balanceDue'), 0)
 
     # Margin
     margin_pct = (gross_profit / total_retail * 100) if total_retail > 0 else 0.0
