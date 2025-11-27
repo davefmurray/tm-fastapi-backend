@@ -2,7 +2,7 @@
 
 ## Overview
 
-The True GP system provides **accurate gross profit calculations** that fix known issues with Tekmetric's built-in aggregates. It's built in 4 tiers:
+The True GP system provides **accurate gross profit calculations** that fix known issues with Tekmetric's built-in aggregates. It's built in 7 tiers:
 
 | Tier | Purpose |
 |------|---------|
@@ -12,6 +12,7 @@ The True GP system provides **accurate gross profit calculations** that fix know
 | **Tier 4** | Database persistence (historical tracking, trend analysis) |
 | **Tier 5** | Real-time dashboard (WebSocket streaming, live updates) |
 | **Tier 6** | Service advisor tracking (sales, GP, goals) |
+| **Tier 7** | Trend analysis & forecasting (WoW, MoM, rolling averages, linear regression) |
 
 ---
 
@@ -37,6 +38,14 @@ The True GP system provides **accurate gross profit calculations** that fix know
 | **Get advisor performance** | `GET /api/advisors/performance` |
 | **Get advisor leaderboard** | `GET /api/advisors/leaderboard` |
 | **Check advisor vs goals** | `GET /api/advisors/goals` |
+| **Week-over-week comparison** | `GET /api/trends/wow` |
+| **Month-over-month comparison** | `GET /api/trends/mom` |
+| **Rolling averages** | `GET /api/trends/rolling-averages` |
+| **GP forecasting** | `GET /api/trends/forecast` |
+| **Day-of-week patterns** | `GET /api/trends/day-patterns` |
+| **Best/worst days** | `GET /api/trends/extremes` |
+| **Category trends** | `GET /api/trends/category-trends` |
+| **Trend summary dashboard** | `GET /api/trends/summary` |
 
 ---
 
@@ -1577,3 +1586,677 @@ async function loadAdvisorCards() {
 | `/api/advisors/advisor/{id}` | Single advisor detail | 6 |
 | `/api/advisors/compare` | Advisor comparison | 6 |
 | `/api/advisors/goals` | Goal tracking | 6 |
+| `/api/trends/wow` | Week-over-week | 7 |
+| `/api/trends/mom` | Month-over-month | 7 |
+| `/api/trends/rolling-averages` | Rolling averages | 7 |
+| `/api/trends/forecast` | Linear regression forecast | 7 |
+| `/api/trends/day-patterns` | Day-of-week analysis | 7 |
+| `/api/trends/extremes` | Best/worst days | 7 |
+| `/api/trends/category-trends` | Category trend analysis | 7 |
+| `/api/trends/summary` | Trend summary dashboard | 7 |
+
+---
+
+## Tier 7: Trend Analysis & Forecasting
+
+Tier 7 adds **advanced trend analysis** and **forecasting** using historical data from Tier 4:
+- Week-over-week (WoW) and month-over-month (MoM) comparisons
+- Rolling averages with configurable windows
+- Linear regression forecasting with confidence indicators
+- Day-of-week pattern analysis
+- Best/worst performing days identification
+- Category-specific trend tracking
+
+### 23. Week-over-Week Comparison
+
+**`GET /api/trends/wow?weeks_back=4`**
+
+Compares GP metrics across recent weeks with change calculations.
+
+```json
+{
+  "analysis_type": "week_over_week",
+  "weeks_analyzed": 4,
+  "weeks": [
+    {
+      "week_number": 0,
+      "week_label": "Week of 2025-11-25",
+      "start_date": "2025-11-25",
+      "end_date": "2025-11-26",
+      "days_with_data": 2,
+      "metrics": {
+        "total_revenue": 12500.00,
+        "total_gp": 7375.00,
+        "avg_gp_pct": 59.0,
+        "ro_count": 8,
+        "aro": 1562.50
+      }
+    },
+    {
+      "week_number": 1,
+      "week_label": "Week of 2025-11-18",
+      "metrics": {
+        "total_revenue": 45000.00,
+        "total_gp": 25650.00,
+        "avg_gp_pct": 57.0,
+        "ro_count": 30,
+        "aro": 1500.00
+      }
+    }
+  ],
+  "wow_changes": [
+    {
+      "period": "Week of 2025-11-25 vs Week of 2025-11-18",
+      "revenue_change": -32500.00,
+      "revenue_change_pct": -72.22,
+      "gp_pct_change": 2.0,
+      "ro_count_change": -22,
+      "aro_change": 62.50
+    }
+  ],
+  "insights": [
+    "GP% improved from 55.5% to 59.0% over 4 weeks"
+  ]
+}
+```
+
+---
+
+### 24. Month-over-Month Comparison
+
+**`GET /api/trends/mom?months_back=3`**
+
+Compares GP metrics across recent months.
+
+```json
+{
+  "analysis_type": "month_over_month",
+  "months_analyzed": 3,
+  "months": [
+    {
+      "month_number": 0,
+      "month_label": "November 2025",
+      "start_date": "2025-11-01",
+      "end_date": "2025-11-26",
+      "days_with_data": 19,
+      "metrics": {
+        "total_revenue": 145000.00,
+        "total_gp": 85550.00,
+        "avg_gp_pct": 59.0,
+        "ro_count": 95,
+        "aro": 1526.32,
+        "daily_avg_revenue": 7631.58,
+        "parts_profit": 42775.00,
+        "labor_profit": 38500.00
+      }
+    },
+    {
+      "month_number": 1,
+      "month_label": "October 2025",
+      "metrics": {
+        "total_revenue": 125000.00,
+        "total_gp": 68750.00,
+        "avg_gp_pct": 55.0,
+        "ro_count": 85,
+        "aro": 1470.59
+      }
+    }
+  ],
+  "mom_changes": [
+    {
+      "period": "November 2025 vs October 2025",
+      "revenue_change_pct": 16.0,
+      "gp_pct_change": 4.0,
+      "ro_count_change_pct": 11.76,
+      "aro_change_pct": 3.79
+    }
+  ]
+}
+```
+
+---
+
+### 25. Rolling Averages
+
+**`GET /api/trends/rolling-averages?days=30&short_window=7&long_window=14`**
+
+Calculates rolling averages for GP%, revenue, and ARO with configurable windows.
+
+```json
+{
+  "analysis_type": "rolling_averages",
+  "period": {
+    "start": "2025-10-27",
+    "end": "2025-11-26",
+    "data_points": 22
+  },
+  "windows": {
+    "short_term": 7,
+    "long_term": 14
+  },
+  "current_values": {
+    "gp_pct_actual": 59.02,
+    "gp_pct_short_ma": 58.25,
+    "gp_pct_long_ma": 56.80,
+    "trend": "up"
+  },
+  "signals": [
+    "BULLISH: Short-term GP% crossed above long-term - positive momentum"
+  ],
+  "time_series": [
+    {
+      "date": "2025-11-26",
+      "gp_pct": 59.02,
+      "gp_ma_short": 58.25,
+      "gp_ma_long": 56.80,
+      "revenue": 6500.00,
+      "revenue_ma_short": 6200.00,
+      "revenue_ma_long": 5800.00,
+      "aro": 1625.00
+    }
+  ]
+}
+```
+
+#### Dashboard Usage: Trend Crossover Alerts
+
+```javascript
+async function checkTrendCrossover() {
+  const res = await fetch('/api/trends/rolling-averages?days=30');
+  const data = await res.json();
+
+  if (data.signals.some(s => s.includes('BULLISH'))) {
+    showNotification('GP trend turning positive! 📈', 'success');
+  } else if (data.signals.some(s => s.includes('BEARISH'))) {
+    showNotification('GP trend turning negative! 📉', 'warning');
+  }
+}
+```
+
+---
+
+### 26. GP Forecasting
+
+**`GET /api/trends/forecast?days_history=30&days_forecast=7`**
+
+Uses linear regression to forecast GP metrics with confidence indicators.
+
+```json
+{
+  "analysis_type": "forecast",
+  "model": "linear_regression",
+  "training_period": {
+    "start": "2025-10-27",
+    "end": "2025-11-26",
+    "data_points": 22
+  },
+  "forecast_period": {
+    "start": "2025-11-27",
+    "end": "2025-12-03",
+    "days": 7
+  },
+  "model_metrics": {
+    "gp_pct": {
+      "slope_per_day": 0.12,
+      "r_squared": 0.65,
+      "confidence": "medium",
+      "trend": "increasing"
+    },
+    "revenue": {
+      "slope_per_day": 125.50,
+      "r_squared": 0.45,
+      "confidence": "medium"
+    },
+    "aro": {
+      "slope_per_day": 8.25,
+      "r_squared": 0.55,
+      "confidence": "medium"
+    }
+  },
+  "forecasts": [
+    {
+      "date": "2025-11-27",
+      "day_number": 1,
+      "gp_pct_forecast": 59.14,
+      "revenue_forecast": 6625.50,
+      "aro_forecast": 1633.25
+    },
+    {
+      "date": "2025-11-28",
+      "day_number": 2,
+      "gp_pct_forecast": 59.26,
+      "revenue_forecast": 6751.00,
+      "aro_forecast": 1641.50
+    }
+  ],
+  "disclaimer": "Forecasts are based on historical trends and should be used as guidance only"
+}
+```
+
+#### Confidence Levels
+
+| R-squared | Confidence | Interpretation |
+|-----------|------------|----------------|
+| ≥ 0.70 | High | Strong linear relationship, forecast reliable |
+| 0.40 - 0.69 | Medium | Moderate relationship, use with caution |
+| < 0.40 | Low | Weak relationship, forecast less reliable |
+
+---
+
+### 27. Day-of-Week Patterns
+
+**`GET /api/trends/day-patterns?weeks=8`**
+
+Analyzes GP patterns by day of week to identify best/worst performing days.
+
+```json
+{
+  "analysis_type": "day_of_week_patterns",
+  "period": {
+    "start": "2025-09-30",
+    "end": "2025-11-26",
+    "weeks_analyzed": 8
+  },
+  "by_day": [
+    {
+      "day_number": 0,
+      "day_name": "Monday",
+      "sample_count": 8,
+      "gp_pct": {
+        "avg": 56.5,
+        "min": 52.0,
+        "max": 61.0,
+        "std_dev": 2.85
+      },
+      "revenue": {
+        "avg": 5800.00,
+        "min": 4200.00,
+        "max": 7500.00
+      },
+      "ro_count": {
+        "avg": 4.2,
+        "total": 34
+      }
+    },
+    {
+      "day_number": 1,
+      "day_name": "Tuesday",
+      "sample_count": 8,
+      "gp_pct": {
+        "avg": 58.2,
+        "min": 54.0,
+        "max": 62.0,
+        "std_dev": 2.45
+      }
+    }
+  ],
+  "highlights": {
+    "best_gp_day": "Thursday",
+    "best_gp_avg": 60.5,
+    "worst_gp_day": "Monday",
+    "worst_gp_avg": 56.5,
+    "busiest_day": "Wednesday",
+    "busiest_revenue_avg": 8200.00
+  },
+  "insights": [
+    "GP% varies by 4.0% between Thursday and Monday",
+    "Wednesday is typically the busiest day",
+    "Sunday is typically the slowest day"
+  ]
+}
+```
+
+#### Dashboard Usage: Day Pattern Chart
+
+```javascript
+async function loadDayPatternChart() {
+  const res = await fetch('/api/trends/day-patterns?weeks=8');
+  const data = await res.json();
+
+  new Chart(document.getElementById('day-chart'), {
+    type: 'bar',
+    data: {
+      labels: data.by_day.map(d => d.day_name),
+      datasets: [{
+        label: 'Avg GP%',
+        data: data.by_day.map(d => d.gp_pct?.avg || 0),
+        backgroundColor: data.by_day.map(d =>
+          d.day_name === data.highlights.best_gp_day ? '#4CAF50' : '#2196F3'
+        )
+      }]
+    }
+  });
+}
+```
+
+---
+
+### 28. Best/Worst Days
+
+**`GET /api/trends/extremes?days=90&top_n=5`**
+
+Finds the best and worst performing days by GP%, revenue, and ARO.
+
+```json
+{
+  "analysis_type": "extreme_days",
+  "period": {
+    "start": "2025-08-28",
+    "end": "2025-11-26",
+    "total_days_analyzed": 65
+  },
+  "by_gp_percentage": {
+    "best": [
+      {
+        "date": "2025-11-15",
+        "gp_pct": 68.5,
+        "revenue": 8500.00,
+        "gross_profit": 5822.50,
+        "ro_count": 5,
+        "aro": 1700.00
+      }
+    ],
+    "worst": [
+      {
+        "date": "2025-09-12",
+        "gp_pct": 42.0,
+        "revenue": 3200.00,
+        "gross_profit": 1344.00,
+        "ro_count": 2,
+        "aro": 1600.00
+      }
+    ]
+  },
+  "by_revenue": {
+    "best": [
+      {
+        "date": "2025-10-23",
+        "gp_pct": 58.0,
+        "revenue": 12500.00,
+        "ro_count": 8,
+        "aro": 1562.50
+      }
+    ],
+    "worst": [
+      {
+        "date": "2025-09-08",
+        "gp_pct": 55.0,
+        "revenue": 1800.00,
+        "ro_count": 1
+      }
+    ]
+  },
+  "by_aro": {
+    "best": [...],
+    "worst": [...]
+  }
+}
+```
+
+---
+
+### 29. Category Trends
+
+**`GET /api/trends/category-trends?days=30`**
+
+Analyzes trends by revenue category (parts, labor) over time.
+
+```json
+{
+  "analysis_type": "category_trends",
+  "period": {
+    "start": "2025-10-27",
+    "end": "2025-11-26",
+    "data_points": 22
+  },
+  "category_trends": {
+    "parts": {
+      "first_half_margin_avg": 48.5,
+      "second_half_margin_avg": 51.2,
+      "trend": "improving"
+    },
+    "labor": {
+      "first_half_margin_avg": 78.5,
+      "second_half_margin_avg": 80.1,
+      "trend": "improving"
+    }
+  },
+  "gp_contribution_pct": {
+    "parts": 45.5,
+    "labor": 48.2,
+    "sublet": 4.8,
+    "fees": 1.5
+  },
+  "time_series": [
+    {
+      "date": "2025-11-26",
+      "parts_margin_pct": 52.0,
+      "labor_margin_pct": 81.5,
+      "parts_profit": 2600.00,
+      "labor_profit": 3200.00,
+      "total_gp": 6300.00
+    }
+  ],
+  "insights": [
+    "Parts contribute 45.5% of total GP",
+    "Labor contributes 48.2% of total GP",
+    "Parts margin is improving",
+    "Labor margin is improving"
+  ]
+}
+```
+
+---
+
+### 30. Trend Summary Dashboard
+
+**`GET /api/trends/summary?days=30`**
+
+Comprehensive trend summary combining key metrics from all analyses.
+
+```json
+{
+  "analysis_type": "trend_summary",
+  "period": {
+    "start": "2025-10-27",
+    "end": "2025-11-26",
+    "days": 30,
+    "data_points": 22
+  },
+  "current_metrics": {
+    "total_revenue": 145000.00,
+    "total_gross_profit": 85550.00,
+    "avg_gp_pct": 59.0,
+    "total_ros": 95,
+    "avg_daily_revenue": 6590.91,
+    "aro": 1526.32
+  },
+  "trend_indicators": {
+    "gp_trend": "up",
+    "gp_slope_per_day": 0.12,
+    "trend_confidence": "medium",
+    "r_squared": 0.55
+  },
+  "week_over_week": {
+    "this_week_gp_pct": 59.5,
+    "last_week_gp_pct": 57.0,
+    "change": 2.5
+  },
+  "alerts": [
+    {
+      "level": "info",
+      "message": "WoW GP improved 2.5% - document what's working"
+    },
+    {
+      "level": "info",
+      "message": "All metrics within normal range"
+    }
+  ]
+}
+```
+
+#### Alert Levels
+
+| Level | Trigger |
+|-------|---------|
+| `critical` | GP% < 45% |
+| `warning` | GP% < 50% OR downward trend OR WoW drop > 2% |
+| `info` | WoW improvement > 2% OR all normal |
+
+---
+
+## Dashboard Integration: Trend Dashboard
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>GP Trend Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <h1>GP Trend Analysis</h1>
+
+  <!-- Summary Cards -->
+  <div class="summary-grid">
+    <div class="card">
+      <h3>30-Day GP%</h3>
+      <span id="avg-gp">0%</span>
+      <span id="gp-trend" class="trend-indicator">→</span>
+    </div>
+    <div class="card">
+      <h3>WoW Change</h3>
+      <span id="wow-change">0%</span>
+    </div>
+    <div class="card">
+      <h3>7-Day Forecast</h3>
+      <span id="forecast-gp">0%</span>
+      <span class="confidence" id="forecast-confidence">Low</span>
+    </div>
+  </div>
+
+  <!-- Rolling Average Chart -->
+  <canvas id="rolling-chart"></canvas>
+
+  <!-- Day Pattern Chart -->
+  <canvas id="day-pattern-chart"></canvas>
+
+  <!-- Alerts -->
+  <div id="alerts"></div>
+
+  <script>
+    async function loadTrendDashboard() {
+      // Load summary
+      const summary = await fetch('/api/trends/summary?days=30').then(r => r.json());
+
+      document.getElementById('avg-gp').textContent = summary.current_metrics.avg_gp_pct + '%';
+      document.getElementById('gp-trend').textContent =
+        summary.trend_indicators.gp_trend === 'up' ? '↑' :
+        summary.trend_indicators.gp_trend === 'down' ? '↓' : '→';
+      document.getElementById('wow-change').textContent =
+        (summary.week_over_week.change > 0 ? '+' : '') + summary.week_over_week.change + '%';
+
+      // Display alerts
+      summary.alerts.forEach(alert => {
+        document.getElementById('alerts').innerHTML +=
+          `<div class="alert alert-${alert.level}">${alert.message}</div>`;
+      });
+
+      // Load forecast
+      const forecast = await fetch('/api/trends/forecast?days_history=30&days_forecast=7')
+        .then(r => r.json());
+
+      if (forecast.forecasts && forecast.forecasts.length > 0) {
+        const lastForecast = forecast.forecasts[forecast.forecasts.length - 1];
+        document.getElementById('forecast-gp').textContent = lastForecast.gp_pct_forecast + '%';
+        document.getElementById('forecast-confidence').textContent =
+          forecast.model_metrics.gp_pct.confidence;
+      }
+
+      // Load rolling averages for chart
+      const rolling = await fetch('/api/trends/rolling-averages?days=30').then(r => r.json());
+
+      new Chart(document.getElementById('rolling-chart'), {
+        type: 'line',
+        data: {
+          labels: rolling.time_series.map(d => d.date),
+          datasets: [
+            {
+              label: 'GP%',
+              data: rolling.time_series.map(d => d.gp_pct),
+              borderColor: '#333',
+              borderDash: [5, 5]
+            },
+            {
+              label: '7-Day MA',
+              data: rolling.time_series.map(d => d.gp_ma_short),
+              borderColor: '#2196F3'
+            },
+            {
+              label: '14-Day MA',
+              data: rolling.time_series.map(d => d.gp_ma_long),
+              borderColor: '#4CAF50'
+            }
+          ]
+        },
+        options: {
+          scales: { y: { min: 40, max: 70 } }
+        }
+      });
+
+      // Load day patterns
+      const patterns = await fetch('/api/trends/day-patterns?weeks=8').then(r => r.json());
+
+      new Chart(document.getElementById('day-pattern-chart'), {
+        type: 'bar',
+        data: {
+          labels: patterns.by_day.filter(d => d.gp_pct).map(d => d.day_name),
+          datasets: [{
+            label: 'Avg GP%',
+            data: patterns.by_day.filter(d => d.gp_pct).map(d => d.gp_pct.avg),
+            backgroundColor: patterns.by_day.filter(d => d.gp_pct).map(d =>
+              d.day_name === patterns.highlights.best_gp_day ? '#4CAF50' :
+              d.day_name === patterns.highlights.worst_gp_day ? '#f44336' : '#2196F3'
+            )
+          }]
+        }
+      });
+    }
+
+    loadTrendDashboard();
+  </script>
+</body>
+</html>
+```
+
+---
+
+## Complete API Summary (All 7 Tiers)
+
+| Endpoint | Use For | Tier |
+|----------|---------|------|
+| `/api/dashboard/true-metrics` | Main KPI dashboard | 1-2 |
+| `/api/analytics/tech-performance` | Tech leaderboard | 3 |
+| `/api/analytics/parts-margin` | Parts profitability | 3 |
+| `/api/analytics/labor-efficiency` | Labor rate analysis | 3 |
+| `/api/analytics/variance-analysis` | TM vs True differences | 3 |
+| `/api/analytics/full-analysis` | Comprehensive reports | 3 |
+| `POST /api/history/snapshot/daily` | Store daily snapshot | 4 |
+| `/api/history/snapshots/daily` | Historical snapshots | 4 |
+| `/api/history/trends` | Basic trend analysis | 4 |
+| `/api/history/ro/{ro_id}` | RO history | 4 |
+| `/api/history/compare/periods` | Period comparison | 4 |
+| `WS /api/realtime/ws` | Live WebSocket | 5 |
+| `POST /api/realtime/start` | Start auto-refresh | 5 |
+| `POST /api/realtime/alert` | Send GP alert | 5 |
+| `/api/advisors/performance` | Advisor metrics | 6 |
+| `/api/advisors/leaderboard` | Advisor rankings | 6 |
+| `/api/advisors/goals` | Goal tracking | 6 |
+| `/api/trends/wow` | Week-over-week | 7 |
+| `/api/trends/mom` | Month-over-month | 7 |
+| `/api/trends/rolling-averages` | Rolling averages | 7 |
+| `/api/trends/forecast` | Linear regression forecast | 7 |
+| `/api/trends/day-patterns` | Day-of-week analysis | 7 |
+| `/api/trends/extremes` | Best/worst days | 7 |
+| `/api/trends/category-trends` | Category trend analysis | 7 |
+| `/api/trends/summary` | Trend summary dashboard | 7 |
