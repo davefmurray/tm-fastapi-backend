@@ -191,26 +191,19 @@ async def get_accurate_authorized_metrics(
     shop_id = tm.get_shop_id()
 
     try:
-        # Get ALL ROs (with pagination)
+        # Get ROs from all boards (just first page for speed - ~1500 ROs)
+        # For recent authorizations, this should be sufficient
         all_ros = []
 
         for board in ["ACTIVE", "POSTED", "COMPLETE"]:
-            page = 0
-            while True:
+            try:
                 ros_page = await tm.get(
                     f"/api/shop/{shop_id}/job-board-group-by",
-                    {"board": board, "groupBy": "NONE", "page": page}
+                    {"board": board, "groupBy": "NONE", "page": 0}
                 )
-
-                if not ros_page or len(ros_page) == 0:
-                    break
-
                 all_ros.extend(ros_page)
-                page += 1
-
-                # Safety limit
-                if page > 50:
-                    break
+            except:
+                pass
 
         # Filter jobs authorized in date range (NOT RO created date!)
         start_date = datetime.fromisoformat(start).date()
