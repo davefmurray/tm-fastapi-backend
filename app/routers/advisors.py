@@ -23,24 +23,59 @@ router = APIRouter()
 
 async def _get_ro_results(start_date: str, end_date: str, status_filter: List[int] = None):
     """Helper to fetch and calculate RO GP results."""
-    client = get_tm_client()
-    shop_config = await get_shop_config(client, client.shop_id)
+    from datetime import datetime
 
-    ros = await client.get_ros_for_period(
-        start_date=start_date,
-        end_date=end_date,
-        status_filter=status_filter or [2, 5, 6]
-    )
+    client = get_tm_client()
+    await client._ensure_token()
+    shop_id = client.get_shop_id()
+    shop_config = await get_shop_config(client, shop_id)
+
+    # Fetch ROs from all boards
+    all_ros = []
+    for board in ["ACTIVE", "POSTED", "COMPLETE"]:
+        try:
+            ros_page = await client.get(
+                f"/api/shop/{shop_id}/job-board-group-by",
+                {"board": board, "groupBy": "NONE", "page": 0, "size": 200}
+            )
+            if ros_page:
+                all_ros.extend(ros_page)
+        except Exception as e:
+            print(f"[Advisors] Error fetching {board} ROs: {e}")
+
+    # Parse date range
+    start_dt = date.fromisoformat(start_date)
+    end_dt = date.fromisoformat(end_date)
 
     results = []
-    for ro in ros:
+    for ro in all_ros:
         try:
-            gp = calculate_ro_true_gp(ro, shop_config)
+            # Get full estimate for GP calculation
+            estimate = await client.get(f"/api/repair-order/{ro['id']}/estimate")
+
+            # Check if RO has authorized jobs in date range
+            has_auth_in_range = False
+            for job in estimate.get("jobs", []):
+                if job.get("authorized") and job.get("authorizedDate"):
+                    try:
+                        auth_date = datetime.fromisoformat(
+                            job["authorizedDate"].replace("Z", "+00:00")
+                        ).date()
+                        if start_dt <= auth_date <= end_dt:
+                            has_auth_in_range = True
+                            break
+                    except:
+                        pass
+
+            if not has_auth_in_range:
+                continue
+
+            gp = calculate_ro_true_gp(estimate, shop_config=shop_config, authorized_only=True)
             results.append(gp)
         except Exception as e:
             print(f"[Advisors] Error calculating GP for RO {ro.get('id')}: {e}")
 
-    return results, client.shop_id
+    return results, shop_id
 
 
 # =============================================================================
