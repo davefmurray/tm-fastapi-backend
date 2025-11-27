@@ -530,3 +530,365 @@ async def audit_date_range(
         current_date -= timedelta(days=1)
 
     return range_results
+
+
+@router.get("/today")
+async def audit_today_ros(
+    days_back: int = Query(0, description="Days back from today (0=today, 1=yesterday, etc.)")
+):
+    """
+    Daily RO Audit View - The backbone for the owner dashboard.
+
+    Returns every RO for the selected day with:
+    - Clear separation of POTENTIAL vs AUTHORIZED metrics
+    - Per-RO breakdown of revenue, profit, labor, parts
+    - Discrepancy flags for dashboard alerts
+    - Data shaped for direct frontend consumption
+
+    This endpoint follows the Metric Contracts defined in METRIC_CONTRACTS.md
+    """
+    tm = get_tm_client()
+    await tm._ensure_token()
+    shop_id = tm.get_shop_id()
+
+    # Calculate target date
+    target_date = (datetime.now() - timedelta(days=days_back)).date()
+
+    # Build date range for TM queries (full day in ET timezone)
+    start_dt = f"{target_date}T00:00:00.000-05:00"
+    end_dt = f"{target_date}T23:59:59.999-05:00"
+
+    result = {
+        "date": target_date.isoformat(),
+        "generated_at": datetime.now().isoformat(),
+        "days_back": days_back,
+
+        # Summary totals (for KPI cards)
+        "totals": {
+            "potential": {
+                "revenue": 0,
+                "parts": 0,
+                "labor": 0,
+                "fees": 0,
+                "discount": 0,
+                "ro_count": 0,
+                "job_count": 0
+            },
+            "authorized": {
+                "revenue": 0,
+                "parts": 0,
+                "labor": 0,
+                "profit": 0,
+                "gp_percent": 0,
+                "ro_count": 0,
+                "job_count": 0
+            },
+            "pending": {
+                "revenue": 0,
+                "job_count": 0
+            }
+        },
+
+        # Per-RO details
+        "ros": [],
+
+        # Issues summary
+        "issues": {
+            "total": 0,
+            "ros_with_issues": 0,
+            "by_type": {
+                "missing_tech": 0,
+                "subtotal_null": 0,
+                "profit_mismatch": 0,
+                "ro_404": 0
+            }
+        }
+    }
+
+    # Fetch all ROs from all boards
+    all_ros = []
+    seen_ids = set()
+
+    for board in ["ACTIVE", "POSTED", "COMPLETE"]:
+        try:
+            ros_page = await tm.get(
+                f"/api/shop/{shop_id}/job-board-group-by",
+                {"board": board, "groupBy": "NONE", "page": 0, "size": 500}
+            )
+            for ro in ros_page:
+                ro_id = ro.get("id")
+                if ro_id and ro_id not in seen_ids:
+                    seen_ids.add(ro_id)
+                    ro["_board"] = board
+                    all_ros.append(ro)
+        except Exception as e:
+            print(f"[Audit] Error fetching {board} board: {e}")
+
+    # Filter to ROs with activity on target date
+    # Check updatedDate, postedDate, or job authorizedDate
+    for ro_summary in all_ros:
+        ro_id = ro_summary.get("id")
+
+        # Check if RO has activity on target date
+        has_activity = False
+        dates_to_check = [
+            ro_summary.get("updatedDate"),
+            ro_summary.get("postedDate"),
+            ro_summary.get("createdDate")
+        ]
+
+        for date_str in dates_to_check:
+            if date_str:
+                try:
+                    ro_date = datetime.fromisoformat(date_str.replace("Z", "+00:00")).date()
+                    if ro_date == target_date:
+                        has_activity = True
+                        break
+                except:
+                    pass
+
+        if not has_activity:
+            continue
+
+        # Build detailed RO record
+        ro_record = await build_ro_audit_record(tm, ro_id, ro_summary, target_date)
+
+        if ro_record:
+            result["ros"].append(ro_record)
+
+            # Aggregate totals
+            pot = ro_record["potential"]
+            auth = ro_record["authorized"]
+
+            result["totals"]["potential"]["revenue"] += pot["revenue"]
+            result["totals"]["potential"]["parts"] += pot["parts"]
+            result["totals"]["potential"]["labor"] += pot["labor"]
+            result["totals"]["potential"]["fees"] += pot["fees"]
+            result["totals"]["potential"]["discount"] += pot["discount"]
+            result["totals"]["potential"]["job_count"] += pot["job_count"]
+            result["totals"]["potential"]["ro_count"] += 1
+
+            result["totals"]["authorized"]["revenue"] += auth["revenue"]
+            result["totals"]["authorized"]["parts"] += auth["parts"]
+            result["totals"]["authorized"]["labor"] += auth["labor"]
+            result["totals"]["authorized"]["profit"] += auth["profit"]
+            result["totals"]["authorized"]["job_count"] += auth["job_count"]
+            if auth["revenue"] > 0:
+                result["totals"]["authorized"]["ro_count"] += 1
+
+            result["totals"]["pending"]["revenue"] += pot["revenue"] - auth["revenue"]
+            result["totals"]["pending"]["job_count"] += pot["job_count"] - auth["job_count"]
+
+            # Count issues
+            if ro_record["issues"]:
+                result["issues"]["ros_with_issues"] += 1
+                result["issues"]["total"] += len(ro_record["issues"])
+                for issue in ro_record["issues"]:
+                    issue_type = issue.get("type", "other")
+                    if issue_type in result["issues"]["by_type"]:
+                        result["issues"]["by_type"][issue_type] += 1
+
+    # Calculate aggregate GP%
+    total_auth_rev = result["totals"]["authorized"]["revenue"]
+    total_auth_profit = result["totals"]["authorized"]["profit"]
+    if total_auth_rev > 0:
+        result["totals"]["authorized"]["gp_percent"] = round(
+            (total_auth_profit / total_auth_rev) * 100, 2
+        )
+
+    # Sort ROs by authorized revenue descending
+    result["ros"].sort(key=lambda x: x["authorized"]["revenue"], reverse=True)
+
+    return result
+
+
+async def build_ro_audit_record(tm, ro_id: int, ro_summary: dict, target_date) -> Optional[dict]:
+    """
+    Build a complete audit record for a single RO.
+
+    Fetches from estimate and profit/labor endpoints,
+    calculates both potential and authorized metrics,
+    and flags any issues.
+    """
+    record = {
+        "ro_id": ro_id,
+        "ro_number": ro_summary.get("roNumber") or ro_summary.get("repairOrderNumber"),
+        "status": ro_summary.get("_board", "UNKNOWN"),
+        "customer": "Unknown",
+        "vehicle": "N/A",
+        "advisor": "Unassigned",
+
+        # POTENTIAL metrics (all jobs)
+        "potential": {
+            "revenue": 0,
+            "parts": 0,
+            "labor": 0,
+            "fees": 0,
+            "discount": 0,
+            "job_count": 0,
+            "jobs": []
+        },
+
+        # AUTHORIZED metrics (job.authorized = true only)
+        "authorized": {
+            "revenue": 0,
+            "parts": 0,
+            "labor": 0,
+            "profit": 0,
+            "gp_percent": 0,
+            "job_count": 0,
+            "jobs": []
+        },
+
+        # Raw endpoint values for comparison
+        "endpoints": {
+            "estimate_total": 0,
+            "estimate_authorized_total": 0,
+            "profit_labor_total": 0,
+            "profit_labor_profit": 0
+        },
+
+        # Issues found
+        "issues": []
+    }
+
+    # Fetch estimate
+    try:
+        estimate = await tm.get(f"/api/repair-order/{ro_id}/estimate")
+
+        # Extract customer/vehicle
+        customer = estimate.get("customer", {}) or {}
+        vehicle = estimate.get("vehicle", {}) or {}
+        record["customer"] = f"{customer.get('firstName', '')} {customer.get('lastName', '')}".strip() or "Unknown"
+        record["vehicle"] = f"{vehicle.get('year', '')} {vehicle.get('make', '')} {vehicle.get('model', '')}".strip() or "N/A"
+
+        # Store raw endpoint values
+        record["endpoints"]["estimate_total"] = cents_to_dollars(estimate.get("total") or 0)
+        record["endpoints"]["estimate_authorized_total"] = cents_to_dollars(estimate.get("authorizedTotal") or 0)
+
+        # Check for null subtotal issue
+        if estimate.get("subtotal") is None:
+            record["issues"].append({
+                "type": "subtotal_null",
+                "message": "estimate.subtotal is null - using total instead"
+            })
+
+        # Process each job
+        for job in estimate.get("jobs", []):
+            job_id = job.get("id")
+            job_name = job.get("name", "Unnamed Job")
+            is_authorized = job.get("authorized") == True
+            auth_date = job.get("authorizedDate")
+
+            # Calculate job totals
+            parts_total = sum(p.get("total", 0) for p in job.get("parts", []))
+            labor_total = sum(l.get("total", 0) for l in job.get("labor", []))
+            fees_total = sum(f.get("total", 0) for f in job.get("fees", []))
+            discount = job.get("discount", 0) or 0
+            job_total = parts_total + labor_total + fees_total - discount
+
+            # Check for missing technician
+            for labor in job.get("labor", []):
+                tech = labor.get("technician")
+                if not tech or not tech.get("id"):
+                    record["issues"].append({
+                        "type": "missing_tech",
+                        "message": f"No technician assigned: {job_name} - {labor.get('name', 'labor')}"
+                    })
+
+            job_summary = {
+                "job_id": job_id,
+                "name": job_name,
+                "authorized": is_authorized,
+                "authorized_date": auth_date,
+                "parts": cents_to_dollars(parts_total),
+                "labor": cents_to_dollars(labor_total),
+                "fees": cents_to_dollars(fees_total),
+                "discount": cents_to_dollars(discount),
+                "total": cents_to_dollars(job_total)
+            }
+
+            # Add to POTENTIAL (all jobs)
+            record["potential"]["revenue"] += cents_to_dollars(job_total)
+            record["potential"]["parts"] += cents_to_dollars(parts_total)
+            record["potential"]["labor"] += cents_to_dollars(labor_total)
+            record["potential"]["fees"] += cents_to_dollars(fees_total)
+            record["potential"]["discount"] += cents_to_dollars(discount)
+            record["potential"]["job_count"] += 1
+            record["potential"]["jobs"].append(job_summary)
+
+            # Add to AUTHORIZED only if authorized
+            if is_authorized:
+                # Check if authorized on target date
+                auth_on_target = False
+                if auth_date:
+                    try:
+                        auth_dt = datetime.fromisoformat(auth_date.replace("Z", "+00:00")).date()
+                        auth_on_target = (auth_dt == target_date)
+                    except:
+                        pass
+
+                record["authorized"]["revenue"] += cents_to_dollars(job_total)
+                record["authorized"]["parts"] += cents_to_dollars(parts_total)
+                record["authorized"]["labor"] += cents_to_dollars(labor_total)
+                record["authorized"]["job_count"] += 1
+                record["authorized"]["jobs"].append({
+                    **job_summary,
+                    "authorized_on_target_date": auth_on_target
+                })
+
+    except Exception as e:
+        record["issues"].append({
+            "type": "estimate_error",
+            "message": f"Failed to fetch estimate: {str(e)}"
+        })
+        return record
+
+    # Fetch profit/labor for authorized GP
+    try:
+        profit_labor = await tm.get(f"/api/repair-order/{ro_id}/profit/labor")
+
+        labor_obj = profit_labor.get("laborProfit", {}) or {}
+        total_obj = profit_labor.get("totalProfit", {}) or {}
+
+        pl_revenue = total_obj.get("retail") or 0
+        pl_profit = total_obj.get("profit") or 0
+        pl_margin = total_obj.get("margin") or 0
+
+        record["endpoints"]["profit_labor_total"] = cents_to_dollars(pl_revenue)
+        record["endpoints"]["profit_labor_profit"] = cents_to_dollars(pl_profit)
+
+        # Use profit/labor as source of truth for authorized profit
+        record["authorized"]["profit"] = cents_to_dollars(pl_profit)
+        record["authorized"]["gp_percent"] = round(pl_margin * 100, 2)
+
+        # Check for mismatch between our authorized calculation and profit/labor
+        our_auth_rev = int(record["authorized"]["revenue"] * 100)
+        if abs(our_auth_rev - pl_revenue) > 100:  # More than $1 difference
+            record["issues"].append({
+                "type": "profit_mismatch",
+                "message": f"Authorized revenue mismatch: calculated ${record['authorized']['revenue']:.2f} vs profit/labor ${pl_revenue/100:.2f}",
+                "calculated": record["authorized"]["revenue"],
+                "profit_labor": cents_to_dollars(pl_revenue)
+            })
+
+    except Exception as e:
+        record["issues"].append({
+            "type": "profit_labor_error",
+            "message": f"Failed to fetch profit/labor: {str(e)}"
+        })
+
+    # Try to get advisor from basic RO endpoint
+    try:
+        ro_basic = await tm.get(f"/api/repair-order/{ro_id}")
+        advisor = ro_basic.get("serviceAdvisor", {}) or {}
+        record["advisor"] = f"{advisor.get('firstName', '')} {advisor.get('lastName', '')}".strip() or "Unassigned"
+    except Exception as e:
+        # 404 is common for WIP ROs
+        if "404" in str(e):
+            record["issues"].append({
+                "type": "ro_404",
+                "message": "Basic RO endpoint returned 404 (common for WIP)"
+            })
+
+    return record
