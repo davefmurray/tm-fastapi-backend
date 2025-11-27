@@ -790,6 +790,9 @@ async def get_live_authorized_work(
                 "avg_ticket": round(avg_ticket / 100, 2)
             },
             "ros": ro_details[:50],  # Top 50 ROs
-            "source": "LIVE_AUTHORIZED_WIP",
+            "source": "LIVE_AUTHORIZED_ALL_BOARDS",
             "calculated_at": datetime.now().isoformat()
         }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
