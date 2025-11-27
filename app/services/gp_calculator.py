@@ -133,22 +133,23 @@ class JobGP:
     parts_retail: int
     parts_cost: int
     parts_profit: int
-    parts_detail: List[PartProfit] = field(default_factory=list)
     # Labor
     labor_retail: int
     labor_cost: int
     labor_profit: int
-    labor_detail: List[LaborProfit] = field(default_factory=list)
     # Sublets
     sublet_retail: int
     sublet_cost: int
     sublet_profit: int
-    sublet_detail: List[SubletProfit] = field(default_factory=list)
-    # Totals
+    # Totals with defaults
     discount_amount: int = 0
     subtotal: int = 0
     gross_profit: int = 0
     margin_pct: float = 0.0
+    # Detail lists (defaults last)
+    parts_detail: List[PartProfit] = field(default_factory=list)
+    labor_detail: List[LaborProfit] = field(default_factory=list)
+    sublet_detail: List[SubletProfit] = field(default_factory=list)
 
 
 @dataclass
