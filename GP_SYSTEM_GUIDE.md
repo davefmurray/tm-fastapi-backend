@@ -10,6 +10,7 @@ The True GP system provides **accurate gross profit calculations** that fix know
 | **Tier 2** | Structured responses (tax/fee attribution, caching) |
 | **Tier 3** | Advanced analytics (tech performance, parts margin, variance) |
 | **Tier 4** | Database persistence (historical tracking, trend analysis) |
+| **Tier 5** | Real-time dashboard (WebSocket streaming, live updates) |
 
 ---
 
@@ -29,6 +30,9 @@ The True GP system provides **accurate gross profit calculations** that fix know
 | **Track specific RO over time** | `GET /api/history/ro/{ro_id}` |
 | **Compare two time periods** | `GET /api/history/compare/periods` |
 | **View tech performance history** | `GET /api/history/tech-performance` |
+| **Connect to live dashboard** | `WS /api/realtime/ws` |
+| **Start auto-refresh** | `POST /api/realtime/start` |
+| **Send GP alert** | `POST /api/realtime/alert` |
 
 ---
 
@@ -935,3 +939,343 @@ async function showTrendIndicator() {
 | `/api/history/ro/{ro_id}` | RO history tracking | 4 |
 | `/api/history/compare/periods` | Period comparison | 4 |
 | `/api/history/tech-performance` | Tech performance history | 4 |
+| `WS /api/realtime/ws` | Live dashboard WebSocket | 5 |
+| `WS /api/realtime/ws/tech` | Live tech leaderboard | 5 |
+| `POST /api/realtime/start` | Start auto-refresh | 5 |
+| `POST /api/realtime/stop` | Stop auto-refresh | 5 |
+| `POST /api/realtime/alert` | Send GP alert | 5 |
+
+---
+
+## Tier 5: Real-time Dashboard (WebSocket)
+
+Tier 5 adds **live streaming** of GP metrics via WebSocket:
+- No polling required - instant updates
+- Channel-based subscriptions
+- Auto-refresh with configurable interval
+- GP threshold alerts
+
+### WebSocket Channels
+
+| Channel | Content |
+|---------|---------|
+| `dashboard` | Main KPI metrics (sales, GP%, ARO, car count) |
+| `tech_performance` | Technician leaderboard updates |
+| `ro_feed` | Live RO create/update feed |
+| `alerts` | GP threshold warnings |
+
+### 13. Connect to Live Dashboard
+
+**`WS /api/realtime/ws`**
+
+Main WebSocket endpoint. Receives automatic updates when auto-refresh is running.
+
+```javascript
+// Connect to WebSocket
+const ws = new WebSocket('ws://localhost:8000/api/realtime/ws');
+
+ws.onopen = () => {
+  console.log('Connected to live dashboard');
+};
+
+ws.onmessage = (event) => {
+  const message = JSON.parse(event.data);
+
+  switch (message.type) {
+    case 'initial_data':
+      // First data on connect
+      updateDashboard(message.data);
+      break;
+
+    case 'dashboard_update':
+      // Live updates
+      updateDashboard(message.data);
+      break;
+
+    case 'alert':
+      // GP alerts
+      showAlert(message.data.message, message.severity);
+      break;
+
+    case 'heartbeat':
+      // Connection health (every 30s)
+      console.log('Heartbeat:', message.timestamp);
+      break;
+  }
+};
+
+ws.onerror = (error) => {
+  console.error('WebSocket error:', error);
+};
+
+ws.onclose = () => {
+  console.log('Disconnected - will attempt reconnect');
+  setTimeout(connectWebSocket, 5000);
+};
+
+function updateDashboard(data) {
+  document.getElementById('sales').textContent = `$${data.sales.toLocaleString()}`;
+  document.getElementById('gp-percent').textContent = `${data.gp_percentage}%`;
+  document.getElementById('aro').textContent = `$${data.aro.toLocaleString()}`;
+  document.getElementById('car-count').textContent = data.car_count;
+  document.getElementById('last-update').textContent = data.updated_at;
+}
+```
+
+### Message Formats
+
+**dashboard_update:**
+```json
+{
+  "type": "dashboard_update",
+  "channel": "dashboard",
+  "timestamp": "2025-11-26T14:30:00",
+  "data": {
+    "date": "2025-11-26",
+    "sales": 45230.50,
+    "cost": 18540.25,
+    "gross_profit": 26690.25,
+    "gp_percentage": 59.02,
+    "car_count": 30,
+    "aro": 1507.68,
+    "updated_at": "2025-11-26T14:30:00"
+  }
+}
+```
+
+**tech_update:**
+```json
+{
+  "type": "tech_update",
+  "channel": "tech_performance",
+  "timestamp": "2025-11-26T14:30:00",
+  "data": [
+    {
+      "tech_id": 12345,
+      "tech_name": "John Smith",
+      "hours_billed": 8.5,
+      "labor_profit": 1275.50,
+      "gp_per_hour": 150.06
+    }
+  ]
+}
+```
+
+**alert:**
+```json
+{
+  "type": "alert",
+  "channel": "alerts",
+  "severity": "warning",
+  "data": {
+    "message": "GP% at 48.5% - approaching 50% threshold",
+    "metric": "gp_percentage",
+    "value": 48.5,
+    "timestamp": "2025-11-26T14:30:00"
+  }
+}
+```
+
+---
+
+### 14. Start Auto-Refresh
+
+**`POST /api/realtime/start?interval=60`**
+
+Starts background task that broadcasts metrics at regular intervals.
+
+```json
+{
+  "status": "started",
+  "interval": 60,
+  "message": "Real-time updates started. Broadcasting every 60s"
+}
+```
+
+---
+
+### 15. Stop Auto-Refresh
+
+**`POST /api/realtime/stop`**
+
+Stops the background refresh task.
+
+```json
+{
+  "status": "stopped"
+}
+```
+
+---
+
+### 16. Send Alert
+
+**`POST /api/realtime/alert?message=GP%20below%20target&severity=warning`**
+
+Manually send alert to all connected clients.
+
+```json
+{
+  "status": "alert_sent",
+  "message": "GP below target",
+  "severity": "warning",
+  "recipients": 3
+}
+```
+
+---
+
+### 17. Get Real-time Status
+
+**`GET /api/realtime/status`**
+
+Check service status and connected clients.
+
+```json
+{
+  "service": "realtime",
+  "status": "active",
+  "refresh_interval_seconds": 60,
+  "connections": {
+    "total_connections": 3,
+    "channels": {
+      "dashboard": 3,
+      "tech_performance": 1,
+      "ro_feed": 0,
+      "alerts": 3
+    }
+  }
+}
+```
+
+---
+
+## Complete Real-time Dashboard Example
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Live GP Dashboard</title>
+  <style>
+    .kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; }
+    .kpi-card { background: #f5f5f5; padding: 20px; border-radius: 8px; text-align: center; }
+    .kpi-value { font-size: 2em; font-weight: bold; color: #333; }
+    .kpi-label { color: #666; margin-top: 5px; }
+    .connected { color: green; }
+    .disconnected { color: red; }
+    .alert { padding: 10px; margin: 10px 0; border-radius: 4px; }
+    .alert-warning { background: #fff3cd; border: 1px solid #ffc107; }
+    .alert-critical { background: #f8d7da; border: 1px solid #dc3545; }
+  </style>
+</head>
+<body>
+  <h1>Live GP Dashboard</h1>
+  <p>Status: <span id="status" class="disconnected">Disconnected</span></p>
+  <p>Last Update: <span id="last-update">-</span></p>
+
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-value" id="sales">$0</div>
+      <div class="kpi-label">Sales</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value" id="gp-dollars">$0</div>
+      <div class="kpi-label">Gross Profit</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value" id="gp-percent">0%</div>
+      <div class="kpi-label">GP%</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value" id="aro">$0</div>
+      <div class="kpi-label">ARO</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value" id="car-count">0</div>
+      <div class="kpi-label">Car Count</div>
+    </div>
+  </div>
+
+  <div id="alerts"></div>
+
+  <h2>Tech Leaderboard</h2>
+  <table id="tech-table">
+    <thead>
+      <tr><th>Technician</th><th>Hours</th><th>Profit</th><th>$/Hour</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    let ws;
+
+    function connect() {
+      ws = new WebSocket('ws://localhost:8000/api/realtime/ws');
+
+      ws.onopen = () => {
+        document.getElementById('status').textContent = 'Connected';
+        document.getElementById('status').className = 'connected';
+
+        // Start auto-refresh on server
+        fetch('/api/realtime/start?interval=30', { method: 'POST' });
+      };
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+
+        if (msg.type === 'initial_data' || msg.type === 'dashboard_update') {
+          updateKPIs(msg.data);
+        }
+
+        if (msg.type === 'tech_update') {
+          updateTechTable(msg.data);
+        }
+
+        if (msg.type === 'alert') {
+          showAlert(msg.data.message, msg.severity);
+        }
+      };
+
+      ws.onclose = () => {
+        document.getElementById('status').textContent = 'Disconnected';
+        document.getElementById('status').className = 'disconnected';
+        setTimeout(connect, 5000);
+      };
+    }
+
+    function updateKPIs(data) {
+      document.getElementById('sales').textContent = '$' + data.sales.toLocaleString();
+      document.getElementById('gp-dollars').textContent = '$' + data.gross_profit.toLocaleString();
+      document.getElementById('gp-percent').textContent = data.gp_percentage + '%';
+      document.getElementById('aro').textContent = '$' + data.aro.toLocaleString();
+      document.getElementById('car-count').textContent = data.car_count;
+      document.getElementById('last-update').textContent = new Date(data.updated_at).toLocaleTimeString();
+    }
+
+    function updateTechTable(techs) {
+      const tbody = document.querySelector('#tech-table tbody');
+      tbody.innerHTML = '';
+      techs.forEach(t => {
+        tbody.innerHTML += `<tr>
+          <td>${t.tech_name}</td>
+          <td>${t.hours_billed}</td>
+          <td>$${t.labor_profit.toLocaleString()}</td>
+          <td>$${t.gp_per_hour.toFixed(2)}</td>
+        </tr>`;
+      });
+    }
+
+    function showAlert(message, severity) {
+      const div = document.createElement('div');
+      div.className = 'alert alert-' + severity;
+      div.textContent = message;
+      document.getElementById('alerts').prepend(div);
+      setTimeout(() => div.remove(), 30000);
+    }
+
+    connect();
+  </script>
+</body>
+</html>
+```
