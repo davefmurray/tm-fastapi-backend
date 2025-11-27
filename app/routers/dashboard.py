@@ -653,25 +653,34 @@ async def get_live_authorized_work(
     end: str = Query(..., description="End date (YYYY-MM-DD)")
 ):
     """
-    Get LIVE authorized work - jobs sold but not yet invoiced.
+    Get LIVE authorized work - daily sales activity.
 
-    This shows the pipeline/WIP:
-    - Authorized jobs on ACTIVE (WIP) ROs
-    - Filtered by authorization date in range
-    - NOT yet posted/invoiced
+    Shows all jobs authorized in the date range, regardless of RO status:
+    - Fetches from ALL boards (ACTIVE, POSTED, COMPLETE)
+    - Filtered by job authorization date in range
+    - Shows "new work sold" for the period
 
-    Use this to see "new work sold" in real-time.
+    Use this to see daily/weekly sales activity.
     """
     tm = get_tm_client()
     await tm._ensure_token()
     shop_id = tm.get_shop_id()
 
     try:
-        # Only fetch ACTIVE (WIP) board - these are not yet posted
-        active_ros = await tm.get(
-            f"/api/shop/{shop_id}/job-board-group-by",
-            {"board": "ACTIVE", "groupBy": "NONE", "page": 0, "size": 500}
-        )
+        # Fetch from ALL boards to get complete sales activity
+        all_ros = []
+        for board in ["ACTIVE", "POSTED", "COMPLETE"]:
+            try:
+                ros_page = await tm.get(
+                    f"/api/shop/{shop_id}/job-board-group-by",
+                    {"board": board, "groupBy": "NONE", "page": 0, "size": 500}
+                )
+                # Tag each RO with its board status
+                for ro in ros_page:
+                    ro["_board"] = board
+                all_ros.extend(ros_page)
+            except:
+                pass
 
         start_date = datetime.fromisoformat(start).date()
         end_date = datetime.fromisoformat(end).date()
@@ -686,7 +695,7 @@ async def get_live_authorized_work(
 
         ro_details = []
 
-        for ro in active_ros:
+        for ro in all_ros:
             try:
                 estimate = await tm.get(f"/api/repair-order/{ro['id']}/estimate")
 
@@ -743,6 +752,10 @@ async def get_live_authorized_work(
                     customer = estimate.get("customer", {})
                     vehicle = estimate.get("vehicle", {})
 
+                    # Map board to display status
+                    board = ro.get("_board", "ACTIVE")
+                    status_map = {"ACTIVE": "WIP", "POSTED": "Invoiced", "COMPLETE": "Complete"}
+
                     ro_details.append({
                         "ro_number": ro.get("roNumber") or ro.get("repairOrderNumber"),
                         "ro_id": ro.get("id"),
@@ -750,7 +763,7 @@ async def get_live_authorized_work(
                         "vehicle": f"{vehicle.get('year', '')} {vehicle.get('make', '')} {vehicle.get('model', '')}".strip(),
                         "authorized_total": round(ro_authorized / 100, 2),
                         "jobs": ro_jobs,
-                        "status": "WIP"
+                        "status": status_map.get(board, "WIP")
                     })
 
             except Exception as e:
