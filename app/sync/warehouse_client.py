@@ -323,6 +323,20 @@ class WarehouseClient:
             return data.get(name_key), data.get(id_key)
         return str(data), None
 
+    def _to_cents(self, value: Any, default: int = 0) -> int:
+        """
+        Safely convert a value to integer cents.
+        TM API sometimes returns floats like "0.0" or "8907.0" for cost fields.
+        Database expects INTEGER.
+        """
+        if value is None:
+            return default
+        try:
+            # Handle string floats like "0.0", "8907.0"
+            return int(float(value))
+        except (ValueError, TypeError):
+            return default
+
     async def upsert_vehicle(
         self,
         shop_uuid: str,
@@ -619,6 +633,12 @@ class WarehouseClient:
         tm_data: Dict
     ) -> Tuple[str, bool]:
         """Upsert job part record."""
+        # Convert monetary fields - TM API returns floats like "0.0", DB expects INTEGER
+        retail = self._to_cents(tm_data.get("retail"))
+        cost = self._to_cents(tm_data.get("cost"))
+        core_charge = self._to_cents(tm_data.get("coreCharge"))
+        quantity = tm_data.get("quantity", 1) or 1
+
         data = {
             "shop_id": shop_uuid,
             "tm_id": tm_data.get("id"),
@@ -629,11 +649,11 @@ class WarehouseClient:
             "name": tm_data.get("name", tm_data.get("brand", "")),
             "part_number": tm_data.get("partNumber"),
             "description": tm_data.get("description"),
-            "quantity": tm_data.get("quantity", 1),
-            "retail": tm_data.get("retail", 0) or 0,
-            "cost": tm_data.get("cost"),
-            "core_charge": tm_data.get("coreCharge"),
-            "total": (tm_data.get("retail", 0) or 0) * (tm_data.get("quantity", 1) or 1),
+            "quantity": quantity,
+            "retail": retail,
+            "cost": cost,
+            "core_charge": core_charge,
+            "total": retail * quantity,
             "vendor_id": tm_data.get("vendorId"),
             "vendor_name": tm_data.get("vendorName"),
             "manufacturer": tm_data.get("brand"),
@@ -692,6 +712,10 @@ class WarehouseClient:
         """Upsert job labor record."""
         tech = tm_data.get("technician", {}) or {}
 
+        # Convert monetary fields - TM API may return floats, DB expects INTEGER
+        rate = self._to_cents(tm_data.get("rate"))
+        total = self._to_cents(tm_data.get("total"))
+
         data = {
             "shop_id": shop_uuid,
             "tm_id": tm_data.get("id"),
@@ -702,9 +726,9 @@ class WarehouseClient:
             "name": tm_data.get("name", "Labor"),
             "description": tm_data.get("description"),
             "labor_type": tm_data.get("laborType"),
-            "hours": tm_data.get("hours", 0) or 0,
-            "rate": tm_data.get("rate", 0) or 0,
-            "total": tm_data.get("total", 0) or 0,
+            "hours": tm_data.get("hours", 0) or 0,  # NUMERIC field, keep as float
+            "rate": rate,
+            "total": total,
             "technician_id": technician_uuid,
             "tm_technician_id": tech.get("id"),
             "technician_name": tech.get("fullName"),
@@ -716,8 +740,8 @@ class WarehouseClient:
         # Add cost data from profit/labor endpoint if available
         if profit_labor_data:
             job_tech = profit_labor_data.get("jobTechnician", {}) or {}
-            data["tech_hourly_cost"] = job_tech.get("hourlyRate")
-            data["labor_cost"] = profit_labor_data.get("cost")
+            data["tech_hourly_cost"] = self._to_cents(job_tech.get("hourlyRate"))
+            data["labor_cost"] = self._to_cents(profit_labor_data.get("cost"))
             # Determine rate source
             if job_tech.get("hourlyRate"):
                 if tech.get("id") and job_tech.get("hourlyRate"):
@@ -769,6 +793,10 @@ class WarehouseClient:
         tm_data: Dict
     ) -> Tuple[str, bool]:
         """Upsert job sublet record."""
+        # Convert monetary fields - TM API may return floats, DB expects INTEGER
+        cost = self._to_cents(tm_data.get("cost"))
+        retail = self._to_cents(tm_data.get("retail"))
+
         data = {
             "shop_id": shop_uuid,
             "tm_id": tm_data.get("id"),
@@ -780,8 +808,8 @@ class WarehouseClient:
             "description": tm_data.get("description"),
             "vendor_id": tm_data.get("vendorId"),
             "vendor_name": tm_data.get("vendorName"),
-            "cost": tm_data.get("cost"),
-            "retail": tm_data.get("retail", 0) or 0,
+            "cost": cost,
+            "retail": retail,
             "invoice_number": tm_data.get("invoiceNumber"),
             "po_number": tm_data.get("poNumber"),
             "tm_extra": {},

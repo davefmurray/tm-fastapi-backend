@@ -1,0 +1,87 @@
+Great work getting this hosted and syncing. Let’s address the TODOs you found and get to a clean, stable state.
+
+Supabase service key and RLS
+
+Right now you’re using the anon key. That’s fine for a first smoke test, but we want the sync service to use the Supabase service_role key so it can bypass RLS correctly for warehouse writes.
+
+Do the following:
+
+Update the Railway service environment to include:
+SUPABASE_SERVICE_KEY = (service_role key from Supabase)
+
+Update the backend code so the warehouse client uses SUPABASE_SERVICE_KEY for all server-side writes and sync operations, not the anon key. Keep the anon key only for any public/readonly contexts if needed.
+
+Verify that RLS is still enabled on all tables, and that the service key can write to all warehouse tables without violating RLS.
+
+After this change, redeploy and re-run a short RO sync (for example days_back=1) and check that error counts drop.
+
+Investigate the 133 RO sync errors
+
+Use sync_log and tm_raw_payloads to figure out exactly why 133 parts/labor line items failed.
+
+Query sync_log in Supabase for the most recent RO sync run with error_count > 0 and inspect the errors column.
+
+If the error details are too generic, add better structured error logging in the sync_repair_orders path so we can see:
+which table (job_parts, job_labor, etc.),
+which tm_id,
+and the exact error message from Supabase.
+
+Dump a small sample of failing payloads from tm_raw_payloads to understand if the errors are due to:
+RLS,
+foreign key constraints,
+missing parent rows,
+or type/constraint mismatches.
+
+Fix the root cause (likely RLS/service key or FK ordering), then re-run the sync and confirm that errors drop to 0 or near-zero. Update WAREHOUSE_PROGRESS.md with what you changed and what the actual issue was.
+
+Vehicles not syncing
+
+We currently have 0 vehicles in the DB despite customers and ROs syncing.
+
+Inspect app/sync/sync_vehicles.py and verify:
+which Tekmetric endpoint(s) it uses,
+how tm_id and shop_id are mapped,
+and which fields are required for inserts.
+
+Manually trigger the vehicles sync via the hosted endpoint:
+GET https://tm-fastapi-backend-production.up.railway.app/api/sync/vehicles?shop_id=6212
+
+Check the Supabase vehicles table after that call. If rows are still 0, inspect any errors from sync_log or the Supabase response.
+
+Fix any mapping or FK issues (for example, wrong shop_id, bad customer mapping, or missing fields that violate NOT NULL constraints).
+
+The goal is that a vehicles sync creates real rows tied to customers and ROs.
+
+WebSocket TekmetricClient await error (non-critical)
+
+You mentioned: “object TekmetricClient can’t be used in await expression” on /api/realtime/ws. This is non-critical but should be cleaned up.
+
+Inspect the websocket route and any use of TekmetricClient there.
+
+If you are accidentally doing await TekmetricClient instead of await TekmetricClient.method(...), correct that.
+
+If the realtime websocket is not needed right now for the warehouse, you can either:
+a) fix the await usage properly, or
+b) temporarily disable that route and note this in WAREHOUSE_PROGRESS.md as a future enhancement.
+
+Ops Summary
+
+At the end of your changes, give me an Ops Summary that includes:
+
+Confirmation that SUPABASE_SERVICE_KEY is set and used
+
+Latest Railway deployment hash and whether it succeeded
+
+New sync_log stats for the most recent RO sync (errors vs created/updated)
+
+Current row counts for:
+repair_orders,
+jobs,
+job_parts,
+job_labor,
+vehicles,
+customers
+
+A brief note on what caused the 133 errors and how it was fixed
+
+Once we have a clean sync with minimal or no errors and vehicles populated, we can move on to building the ro_snapshots and daily_shop_metrics pipeline.
