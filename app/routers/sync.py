@@ -372,3 +372,62 @@ async def get_daily_metrics(
         error_trace = traceback.format_exc()
         logger.error(f"Get metrics error: {e}\n{error_trace}")
         raise HTTPException(status_code=500, detail=f"Query error: {str(e)}")
+
+
+# =============================================================================
+# DEBUG ENDPOINT - Check raw TM job-board response
+# =============================================================================
+
+@router.get("/debug/job-board")
+async def debug_job_board(
+    shop_id: int = Query(default=DEFAULT_SHOP_ID, description="TM Shop ID"),
+    board: str = Query(default="POSTED", description="Board: ACTIVE, POSTED, or COMPLETE"),
+    page: int = Query(default=0, ge=0, le=100, description="Page number")
+):
+    """
+    DEBUG: Fetch raw job-board data from TM to diagnose sync issues.
+    Shows exactly what TM returns without any filtering.
+    """
+    from app.sync.sync_base import SyncBase
+
+    sync = SyncBase()
+
+    try:
+        ros = await sync.tm.get(
+            f"/api/shop/{shop_id}/job-board-group-by",
+            params={
+                "view": "list",
+                "board": board,
+                "page": page,
+                "groupBy": "NONE"
+            }
+        )
+
+        if not isinstance(ros, list):
+            ros = ros.get("content", []) if isinstance(ros, dict) else []
+
+        # Extract key date fields from each RO
+        ro_summary = []
+        for ro in ros:
+            ro_summary.append({
+                "id": ro.get("id"),
+                "roNumber": ro.get("roNumber"),
+                "status": ro.get("repairOrderStatus", {}).get("statusCode") if ro.get("repairOrderStatus") else None,
+                "createdDate": ro.get("createdDate"),
+                "updatedDate": ro.get("updatedDate"),
+                "postedDate": ro.get("postedDate"),
+                "completedDate": ro.get("completedDate"),
+            })
+
+        return {
+            "shop_id": shop_id,
+            "board": board,
+            "page": page,
+            "count": len(ros),
+            "ros": ro_summary
+        }
+
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(f"Debug job-board error: {e}\n{error_trace}")
+        raise HTTPException(status_code=500, detail=f"Debug error: {str(e)}")

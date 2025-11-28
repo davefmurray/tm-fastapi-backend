@@ -1,0 +1,50 @@
+The 30-day numbers are wrong. We should see roughly 400+ ROs in 30 days for this shop, not 68. Treat this as a blocking bug and investigate the cause of the low RO count.
+
+Do a focused audit of how we select and sync ROs for the last 30 days and explain the problem in detail. Specifically, check:
+
+Which endpoint(s) you are using to discover ROs
+
+Are you only using the POSTED board from /job-board-group-by?
+
+Are you also including COMPLETE or any other board/state?
+
+Are there any hidden limits, paging, or default filters that might cap the number of ROs returned?
+
+Which date field you are using for days_back filtering
+
+Are you filtering by updatedDate, createdDate, postedDate, or something else?
+
+For the last 30 days, list the min and max postedDate and createdDate for all synced repair_orders in Supabase.
+
+Check if many older ROs within the 30-day window are being skipped because of a bad date condition.
+
+Compare TM job-board vs Supabase counts
+For the last 30 days:
+
+Count how many ROs Tekmetric reports on the job board(s) you are using (POSTED, COMPLETE, etc.)
+
+Compare that to how many repair_orders rows exist in Supabase for the same date range.
+
+If Tekmetric returns ~400 ROs but we only have 68, show exactly where they are getting dropped in the sync pipeline.
+
+Paging / Limits
+Check if your job-board fetch logic:
+
+handles pagination correctly
+
+uses limit/offset or page parameters
+
+might be stopping after the first page or first N results
+
+Output
+In your next response, I want:
+
+A clear explanation of why we only ended up with 68 ROs for 30 days.
+
+The corrected sync approach (which boards, which date fields, how paging works).
+
+A plan to fix the sync logic so that a 30-day backfill truly reflects ALL relevant ROs in that period, not just a subset.
+
+Then, after fixing, re-run a 30-day sync and give me updated repair_orders and ro_snapshots counts along with the RO count Tekmetric shows for the same period.
+
+Do not move forward with any new dashboard work until this RO count issue is understood and fixed. This is a critical correctness problem.

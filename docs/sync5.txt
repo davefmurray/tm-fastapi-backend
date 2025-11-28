@@ -1,0 +1,49 @@
+Let’s do a 30-day backfill first, not a full year.
+
+Run 30-day historical sync
+
+Run these in the hosted environment:
+
+POST /api/sync/repair-orders?shop_id=6212&days_back=30&board=POSTED
+POST /api/sync/snapshots/build?shop_id=6212&days_back=30
+POST /api/sync/metrics/daily/rebuild?shop_id=6212&start_date=2025-10-29&end_date=2025-11-28
+
+After they complete, give me updated row counts for ro_snapshots and daily_shop_metrics and 5 sample daily rows around 2025-11-26.
+
+Handle negative-profit ROs
+
+Do not “fix” or hide negative-profit ROs. Instead:
+
+Add a small analysis/report that finds ROs where authorized_revenue <= 0 and authorized_profit < 0.
+
+For each such RO, include: ro_number, posted_date, authorized_revenue, authorized_profit, and a guess at why (for example: likely warranty/goodwill, heavy discount, or missing revenue in TM).
+
+Tag these in ro_snapshots with a reason field like variance_reason = 'negative_profit_possible_warranty' so they are clearly identified in metrics and don’t surprise us later.
+
+New dashboard project (do NOT use moneyball-dashboard)
+
+Forget the old moneyball-dashboard. I want a new, modern, beautiful, fast KPI dashboard that reads directly from daily_shop_metrics and ro_snapshots.
+
+Create a new frontend project in the repo (you can propose the structure and tech stack) that is:
+
+Fast and lightweight
+
+Modern UI (clean, high-contrast, mobile-friendly)
+
+Focused on owner/advisor/tech KPIs
+
+Before you lock in the KPI layout, ask me a short focused set of questions in your next reply about:
+
+Which KPIs I care most about (GP%, GP dollars, ARO, car count, labor hours, productivity, authorization rate, etc.)
+
+Which default date ranges matter most (today, yesterday, MTD, last 7 days, last 30 days)
+
+How many “views” I want (Owner view, Advisor view, Tech view, etc.)
+
+Whether I prefer a single-page dashboard with sections or multiple pages
+
+In your next response:
+
+Confirm the 30-day sync is done and show updated metrics.
+
+Show me the list of candidate KPIs you think should be on the new dashboard and ask me those clarifying questions so we can design the dashboard around the real KPIs I care about.
