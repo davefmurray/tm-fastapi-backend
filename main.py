@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 import os
 
-from app.routers import authorization, dashboard, payments, customers, ro_operations, appointments, parts, vcdb, jobs, inspections, employees, inventory, carfax, shop, reports, advanced, fleet, utility, analytics, history, realtime, advisors, trends, audit
+from app.routers import authorization, dashboard, payments, customers, ro_operations, appointments, parts, vcdb, jobs, inspections, employees, inventory, carfax, shop, reports, advanced, fleet, utility, analytics, history, realtime, advisors, trends, audit, sync
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -53,6 +53,7 @@ app.include_router(realtime.router, prefix="/api/realtime", tags=["Real-time (Ti
 app.include_router(advisors.router, prefix="/api/advisors", tags=["Advisors (Tier 6)"])
 app.include_router(trends.router, prefix="/api/trends", tags=["Trends (Tier 7)"])
 app.include_router(audit.router, prefix="/api/audit", tags=["Data Audit"])
+app.include_router(sync.router, prefix="/api/sync", tags=["Warehouse Sync"])
 
 
 @app.get("/")

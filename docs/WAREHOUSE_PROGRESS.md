@@ -2,7 +2,73 @@
 
 This document tracks the implementation progress of the multi-shop Tekmetric data warehouse.
 
-## Current Status: SCHEMA COMPLETE ✅
+## Current Status: SYNC SERVICE IMPLEMENTED ✅
+
+---
+
+## 2025-11-27: Sync Service Implementation
+
+### Completed
+- [x] Created `app/sync/` module structure
+- [x] Implemented `warehouse_client.py` - Supabase client with service_role key for RLS bypass
+- [x] Implemented `sync_base.py` - Base class with sync_cursors and sync_log management
+- [x] Implemented `sync_employees.py` - Employee sync from TM
+- [x] Implemented `sync_customers.py` - Customer sync with on-demand resolution
+- [x] Implemented `sync_vehicles.py` - Vehicle sync with on-demand resolution
+- [x] Implemented `sync_repair_orders.py` - Full RO sync with jobs and line items
+- [x] Created `app/routers/sync.py` - FastAPI endpoints for sync operations
+- [x] Integrated sync router into main.py
+
+### Sync Module Architecture
+```
+app/sync/
+├── __init__.py              # Module exports
+├── warehouse_client.py      # Supabase warehouse operations (~830 lines)
+├── sync_base.py             # Base class for sync operations
+├── sync_employees.py        # Employee sync
+├── sync_customers.py        # Customer sync (paginated + on-demand)
+├── sync_vehicles.py         # Vehicle sync (paginated + on-demand)
+└── sync_repair_orders.py    # RO sync with jobs/parts/labor/sublets/fees
+```
+
+### API Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/sync/employees` | GET | Sync all employees for shop |
+| `/api/sync/customers` | GET | Sync all customers (paginated) |
+| `/api/sync/vehicles` | GET | Sync all vehicles (paginated) |
+| `/api/sync/repair-orders` | GET | Sync ROs by date range and board |
+| `/api/sync/repair-orders/{ro_id}` | GET | Sync single RO by ID |
+| `/api/sync/full-backfill` | GET | Run employees + RO sync |
+
+### Key Parameters
+- `shop_id`: TM shop ID (default: 6212)
+- `days_back`: Days of history to sync (default: 3)
+- `board`: ACTIVE, POSTED, or ALL
+- `limit`: Max ROs to sync (for testing)
+- `store_raw`: Store API payloads for debugging
+
+### Sync Flow
+```
+1. /sync/employees          → employees table
+2. /sync/repair-orders
+   ├── Discover ROs via /job-board-group-by
+   ├── For each RO:
+   │   ├── Resolve customer (sync if missing)
+   │   ├── Resolve vehicle (sync if missing)
+   │   ├── Resolve advisor
+   │   ├── Fetch /estimate for full data
+   │   ├── Fetch /profit/labor for GP%
+   │   ├── Upsert RO with profit data
+   │   └── Sync jobs → parts, labor, sublets, fees
+   └── Update sync_cursor
+```
+
+### Environment Setup Required
+```bash
+# Add to .env
+SUPABASE_SERVICE_KEY=your_service_role_key_here  # For RLS bypass
+```
 
 ---
 
@@ -67,15 +133,35 @@ db/migrations/
 
 ## Next Steps
 
-### Phase 2: Sync Service (Pending)
-- [ ] Implement FastAPI sync service (`tm-fastapi-backend/app/`)
-- [ ] Create entity sync modules for each table
-- [ ] Implement incremental sync using sync_cursors
-- [ ] Add /profit/labor integration for GP calculations
-- [ ] Build snapshot creation on RO posted/completed
+### Phase 2: Sync Service ✅ COMPLETE
+- [x] Implement FastAPI sync service (`tm-fastapi-backend/app/sync/`)
+- [x] Create entity sync modules (employees, customers, vehicles, repair_orders)
+- [x] Implement incremental sync using sync_cursors
+- [x] Add /profit/labor integration for GP calculations
+- [ ] Build snapshot creation on RO posted/completed (Phase 3)
+
+### Phase 2.5: Initial Data Load (Ready to Run)
+```bash
+# 1. Set up environment
+cp .env.example .env
+# Edit .env with Supabase service_role key
+
+# 2. Start server
+cd tm-fastapi-backend
+pip install -r requirements.txt
+uvicorn main:app --reload
+
+# 3. Run initial sync (recommended order)
+curl "http://localhost:8000/api/sync/employees?shop_id=6212"
+curl "http://localhost:8000/api/sync/repair-orders?shop_id=6212&days_back=3&board=POSTED"
+
+# 4. Verify in Supabase
+# - Check repair_orders, jobs, job_parts, job_labor rows
+# - Verify authorized_revenue and gp_percent look reasonable
+```
 
 ### Phase 3: Aggregation Pipeline (Pending)
-- [ ] Implement ro_snapshots generation
+- [ ] Implement ro_snapshots generation on status change
 - [ ] Build daily_shop_metrics aggregation
 - [ ] Build tech_daily_metrics aggregation
 - [ ] Add variance validation (our GP vs TM GP)
