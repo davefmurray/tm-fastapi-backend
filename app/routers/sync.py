@@ -175,32 +175,6 @@ async def trigger_ro_sync(
         raise HTTPException(status_code=500, detail=f"Sync error: {str(e)}\n{error_trace}")
 
 
-@router.get("/repair-orders/{ro_id}")
-async def trigger_single_ro_sync(
-    ro_id: int,
-    shop_id: int = Query(default=DEFAULT_SHOP_ID, description="TM Shop ID"),
-    store_raw: bool = Query(default=False, description="Store raw API responses for debugging")
-):
-    """
-    Sync a single repair order by ID.
-
-    Useful for:
-    - On-demand sync of specific ROs
-    - Testing sync logic
-    - Debugging issues with specific ROs
-    """
-    result = await sync_single_repair_order(
-        tm_shop_id=shop_id,
-        tm_ro_id=ro_id,
-        store_raw=store_raw
-    )
-
-    if result["status"] == "failed":
-        raise HTTPException(status_code=500, detail=result.get("error", "Sync failed"))
-
-    return result
-
-
 @router.get("/repair-orders/historical")
 async def trigger_historical_ro_sync(
     shop_id: int = Query(default=DEFAULT_SHOP_ID, description="TM Shop ID"),
@@ -250,6 +224,32 @@ async def trigger_historical_ro_sync(
         error_trace = traceback.format_exc()
         logger.error(f"Historical RO sync error: {e}\n{error_trace}")
         raise HTTPException(status_code=500, detail=f"Sync error: {str(e)}\n{error_trace}")
+
+
+@router.get("/repair-orders/{ro_id}")
+async def trigger_single_ro_sync(
+    ro_id: int,
+    shop_id: int = Query(default=DEFAULT_SHOP_ID, description="TM Shop ID"),
+    store_raw: bool = Query(default=False, description="Store raw API responses for debugging")
+):
+    """
+    Sync a single repair order by ID.
+
+    Useful for:
+    - On-demand sync of specific ROs
+    - Testing sync logic
+    - Debugging issues with specific ROs
+    """
+    result = await sync_single_repair_order(
+        tm_shop_id=shop_id,
+        tm_ro_id=ro_id,
+        store_raw=store_raw
+    )
+
+    if result["status"] == "failed":
+        raise HTTPException(status_code=500, detail=result.get("error", "Sync failed"))
+
+    return result
 
 
 @router.get("/full-backfill")
