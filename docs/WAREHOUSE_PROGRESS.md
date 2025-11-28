@@ -2,7 +2,62 @@
 
 This document tracks the implementation progress of the multi-shop Tekmetric data warehouse.
 
-## Current Status: SYNC SERVICE IMPLEMENTED ✅
+## Current Status: HOSTED & RUNNING ON RAILWAY ✅
+
+**Production URL:** https://tm-fastapi-backend-production.up.railway.app
+
+---
+
+## 2025-11-27: Railway Deployment & Automated Sync
+
+### Completed
+- [x] Deployed FastAPI backend to Railway as live web service
+- [x] Configured environment variables on Railway
+- [x] Fixed employee sync endpoint (pluralized path)
+- [x] Verified end-to-end sync in hosted environment
+- [x] Implemented APScheduler for automated sync jobs
+- [x] Created DEPLOY_LOG.md with full deployment details
+
+### Railway Service Details
+| Property | Value |
+|----------|-------|
+| URL | https://tm-fastapi-backend-production.up.railway.app |
+| Project ID | 94a56b4c-dbf6-43c0-ad0b-fd9beec041a0 |
+| Shop ID | 6212 (JJ AUTO) |
+
+### Automated Sync Schedule
+| Job | Schedule | Description |
+|-----|----------|-------------|
+| Employee Sync | Daily 6:00 UTC | Full employee refresh |
+| POSTED RO Sync | Every 10 min | Invoiced ROs, last 1 day |
+| ACTIVE RO Sync | Every 10 min | WIP ROs, last 7 days |
+
+### Initial Hosted Sync Results (2025-11-27)
+```
+Employees: 10 fetched, 9 created
+Repair Orders: 10 fetched, 20 records created
+Jobs: 31 created
+Fees: 3 created
+```
+
+### Supabase Data Verification
+| Table | Rows |
+|-------|------|
+| repair_orders | 10 |
+| jobs | 31 |
+| employees | 9 |
+| customers | 10 |
+| job_fees | 2 |
+
+### Environment Variables on Railway
+- `SUPABASE_URL` ✅
+- `SUPABASE_KEY` ✅ (anon key)
+- `TM_BASE_URL` ✅
+- `TM_SHOP_ID` ✅ (6212)
+- `SYNC_ENABLED` ✅ (true)
+- `RO_SYNC_INTERVAL_MINUTES` ✅ (10)
+- `EMPLOYEE_SYNC_HOUR` ✅ (6)
+- `SUPABASE_SERVICE_KEY` ❌ (not yet set - using permissive RLS)
 
 ---
 
