@@ -39,9 +39,13 @@ async def sync_employees(
             metadata={"tm_shop_id": tm_shop_id}
         )
 
-        # Fetch employees from TM
-        # TM endpoint: GET /api/shop/{shopId}/employees (plural!)
-        employees = await sync.tm.get(f"/api/shop/{tm_shop_id}/employees")
+        # Fetch employees from TM using employees-lite with status=ALL
+        # This returns both ACTIVE and DEACTIVATED employees (important for historical ROs!)
+        # The regular /employees endpoint only returns active employees
+        employees = await sync.tm.get(
+            f"/api/shop/{tm_shop_id}/employees-lite",
+            params={"status": "ALL", "size": 500}
+        )
 
         if not isinstance(employees, list):
             employees = employees.get("content", []) if isinstance(employees, dict) else []
@@ -50,7 +54,7 @@ async def sync_employees(
 
         # Store raw payload if debugging
         await sync.store_payload(
-            endpoint=f"/api/shop/{tm_shop_id}/employees",
+            endpoint=f"/api/shop/{tm_shop_id}/employees-lite",
             response={"employees": employees[:5]} if len(employees) > 5 else {"employees": employees}
         )
 

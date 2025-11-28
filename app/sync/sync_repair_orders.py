@@ -75,8 +75,20 @@ async def sync_repair_orders(
         fees_count = 0
 
         # Process each RO
-        for ro_data in ros_to_sync:
+        for ro_summary in ros_to_sync:
             try:
+                tm_ro_id = ro_summary.get("id")
+                if not tm_ro_id:
+                    sync.stats.skipped += 1
+                    continue
+
+                # CRITICAL: Fetch FULL RO data - job-board only returns summary without customerId/vehicleId!
+                ro_data = await sync.tm.get(f"/api/shop/{tm_shop_id}/repair-order/{tm_ro_id}")
+                if not ro_data:
+                    sync.stats.add_error("fetch_ro", tm_ro_id, "RO not found")
+                    sync.stats.skipped += 1
+                    continue
+
                 result = await _sync_single_ro(sync, shop_uuid, tm_shop_id, ro_data)
 
                 if result["status"] == "created":
@@ -95,7 +107,7 @@ async def sync_repair_orders(
                 fees_count += result.get("fees", 0)
 
             except Exception as e:
-                sync.stats.add_error("repair_order", ro_data.get("id"), str(e))
+                sync.stats.add_error("repair_order", tm_ro_id, str(e))
                 sync.stats.skipped += 1
 
         # Update cursor with latest updatedDate seen
