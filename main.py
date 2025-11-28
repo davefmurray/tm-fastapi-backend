@@ -5,18 +5,37 @@ Tekmetric API proxy and custom dashboard backend.
 Provides clean REST API for TM operations with custom metric calculations.
 """
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 import os
+import logging
 
 from app.routers import authorization, dashboard, payments, customers, ro_operations, appointments, parts, vcdb, jobs, inspections, employees, inventory, carfax, shop, reports, advanced, fleet, utility, analytics, history, realtime, advisors, trends, audit, sync
+from app.scheduler import start_scheduler, stop_scheduler
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup and shutdown events"""
+    # Startup
+    logger.info("Starting TM FastAPI Backend...")
+    start_scheduler()
+    yield
+    # Shutdown
+    logger.info("Shutting down TM FastAPI Backend...")
+    stop_scheduler()
+
 
 # Initialize FastAPI app
 app = FastAPI(
     title="TM API Backend",
     description="Tekmetric API proxy with custom dashboard logic",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # CORS middleware (configure for your domains)

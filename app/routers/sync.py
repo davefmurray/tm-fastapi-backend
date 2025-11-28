@@ -33,6 +33,10 @@ async def sync_status():
     """
     Check sync module status and configuration.
     """
+    sync_enabled = os.getenv("SYNC_ENABLED", "true").lower() == "true"
+    ro_interval = int(os.getenv("RO_SYNC_INTERVAL_MINUTES", "10"))
+    emp_hour = int(os.getenv("EMPLOYEE_SYNC_HOUR", "6"))
+
     return {
         "status": "ok",
         "default_shop_id": DEFAULT_SHOP_ID,
@@ -41,6 +45,11 @@ async def sync_status():
         "has_anon_key": bool(os.getenv("SUPABASE_KEY")),
         "tm_base_url": os.getenv("TM_BASE_URL", "NOT SET"),
         "tm_shop_id": os.getenv("TM_SHOP_ID", "NOT SET"),
+        "scheduler": {
+            "enabled": sync_enabled,
+            "ro_sync_interval_minutes": ro_interval,
+            "employee_sync_hour_utc": emp_hour,
+        }
     }
 
 
