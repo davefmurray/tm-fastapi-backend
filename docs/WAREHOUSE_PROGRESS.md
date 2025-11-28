@@ -8,6 +8,64 @@ This document tracks the implementation progress of the multi-shop Tekmetric dat
 
 ---
 
+## 2025-11-28: Sync Error Fixes & Full Data Sync
+
+### Root Cause: TM API Returns Floats for Integer Fields
+
+The Tekmetric API inconsistently returns numeric values as floats (e.g., `0.0`, `8907.0`, `134688.0`)
+for fields that should be integers. PostgreSQL INTEGER columns reject these float strings.
+
+### Fixes Applied
+
+1. **Float-to-Integer Conversion** (`warehouse_client.py`)
+   - Added `_to_int()` helper for safe integer conversion
+   - Applied to all INTEGER columns: `tm_id`, `tm_job_id`, `tm_ro_id`, `vendor_id`, `quantity`
+   - Applied `_to_cents()` to all monetary fields: `retail`, `cost`, `core_charge`, `total`
+
+2. **Parameter Conversion**
+   - Fixed function parameters (not just `tm_data` fields)
+   - Caller passes `job_data["id"]` directly which could be float
+
+3. **NULL Part Names**
+   - Added fallback: `name or brand or "Unnamed Part"`
+
+4. **WebSocket Fix** (non-critical)
+   - Fixed `await get_tm_client()` → `get_tm_client()` (not async)
+
+### Commits
+- `3eebd0d` - fix: Handle NULL part names
+- `938264c` - fix: Convert quantity to int and calculate total as int
+- `b576c50` - fix: Convert ALL integer parameters in upsert functions
+- `5600064` - fix: Convert integer fields in line item upserts
+- `078ca4d` - fix: Convert TM API float values to integers for DB
+
+### Error Progression
+| Sync Run | Errors | Notes |
+|----------|--------|-------|
+| Initial | 133 | FK/constraint issues |
+| After first fixes | 536 | Float conversion discovered |
+| After _to_cents | 445 | tm_id/vendor_id still floats |
+| After _to_int | 464 | Parameters from caller still floats |
+| After param fix | 2 | NULL name constraint |
+| **Final** | **0** | All issues resolved |
+
+### Current Row Counts (2025-11-28)
+| Table | Rows |
+|-------|------|
+| repair_orders | 34 |
+| jobs | 285 |
+| job_parts | 464 |
+| job_labor | 279 |
+| vehicles | 34 |
+| customers | 32 |
+| employees | 9 |
+| job_fees | 32 |
+
+### Environment Variables Status
+- `SUPABASE_SERVICE_KEY` ❌ (pending - using permissive RLS)
+
+---
+
 ## 2025-11-27: Railway Deployment & Automated Sync
 
 ### Completed
