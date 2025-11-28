@@ -2,9 +2,58 @@
 
 This document tracks the implementation progress of the multi-shop Tekmetric data warehouse.
 
-## Current Status: HOSTED & RUNNING ON RAILWAY ✅
+## Current Status: SNAPSHOTS & METRICS LIVE ✅
 
 **Production URL:** https://tm-fastapi-backend-production.up.railway.app
+
+---
+
+## 2025-11-28: RO Snapshots & Daily Metrics Pipeline
+
+### Completed
+- [x] Set `SUPABASE_SERVICE_KEY` on Railway for RLS bypass
+- [x] Implemented `snapshot_builder.py` for RO snapshots
+- [x] Implemented `metrics_aggregator.py` for daily aggregation
+- [x] Created `/api/sync/snapshots/build` endpoint
+- [x] Created `/api/sync/metrics/daily/rebuild` endpoint
+- [x] Created `/api/sync/metrics/daily` query endpoint
+- [x] All follows TRUE_GP calculations from METRIC_CONTRACTS.md
+
+### New Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/sync/snapshots/build` | POST | Build RO snapshots for date range |
+| `/api/sync/metrics/daily/rebuild` | POST | Rebuild daily metrics from snapshots |
+| `/api/sync/metrics/daily` | GET | Query daily metrics for date range |
+
+### Current Row Counts (2025-11-28 Evening)
+| Table | Rows |
+|-------|------|
+| repair_orders | 34 |
+| jobs | 285 |
+| job_parts | 800 |
+| job_labor | 279 |
+| vehicles | 34 |
+| customers | 32 |
+| employees | 9 |
+| **ro_snapshots** | **5** |
+| **daily_shop_metrics** | **4** |
+
+### Sample Metrics (Last 7 Days)
+| Date | RO Count | Revenue | Profit | GP% |
+|------|----------|---------|--------|-----|
+| 2025-11-26 | 2 | $806.40 | $487.17 | 60.41% |
+| 2025-11-19 | 1 | $439.97 | $339.97 | 77.27% |
+| 2025-11-03 | 1 | $200.00 | $132.00 | 66.00% |
+
+### Environment Variables Status
+- `SUPABASE_SERVICE_KEY` ✅ (set on Railway)
+- `SUPABASE_URL` ✅
+- `TM_SHOP_ID` ✅ (6212)
+
+### Latest Deployment
+- **Commit:** `0297083` feat: Add ro_snapshots and daily_shop_metrics pipeline
+- **Status:** ✅ Deployed and running
 
 ---
 
@@ -61,8 +110,8 @@ for fields that should be integers. PostgreSQL INTEGER columns reject these floa
 | employees | 9 |
 | job_fees | 32 |
 
-### Environment Variables Status
-- `SUPABASE_SERVICE_KEY` ❌ (pending - using permissive RLS)
+### Environment Variables Status (as of this date)
+- `SUPABASE_SERVICE_KEY` ❌ (was pending - now set, see above)
 
 ---
 
