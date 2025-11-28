@@ -382,7 +382,8 @@ async def get_daily_metrics(
 async def debug_job_board(
     shop_id: int = Query(default=DEFAULT_SHOP_ID, description="TM Shop ID"),
     board: str = Query(default="POSTED", description="Board: ACTIVE, POSTED, or COMPLETE"),
-    page: int = Query(default=0, ge=0, le=100, description="Page number")
+    page: int = Query(default=0, ge=0, le=100, description="Page number"),
+    size: int = Query(default=100, ge=1, le=10000, description="Page size")
 ):
     """
     DEBUG: Fetch raw job-board data from TM to diagnose sync issues.
@@ -399,6 +400,7 @@ async def debug_job_board(
                 "view": "list",
                 "board": board,
                 "page": page,
+                "size": size,
                 "groupBy": "NONE"
             }
         )
