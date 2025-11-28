@@ -323,9 +323,24 @@ class WarehouseClient:
             return data.get(name_key), data.get(id_key)
         return str(data), None
 
+    def _to_int(self, value: Any, default: Optional[int] = None) -> Optional[int]:
+        """
+        Safely convert a value to integer.
+        TM API sometimes returns floats like "0.0" or "8907.0" for integer fields.
+        Database expects INTEGER.
+        Returns None if value is None (for nullable fields).
+        """
+        if value is None:
+            return default
+        try:
+            # Handle string floats like "0.0", "8907.0"
+            return int(float(value))
+        except (ValueError, TypeError):
+            return default
+
     def _to_cents(self, value: Any, default: int = 0) -> int:
         """
-        Safely convert a value to integer cents.
+        Safely convert a value to integer cents (for monetary fields).
         TM API sometimes returns floats like "0.0" or "8907.0" for cost fields.
         Database expects INTEGER.
         """
@@ -633,15 +648,17 @@ class WarehouseClient:
         tm_data: Dict
     ) -> Tuple[str, bool]:
         """Upsert job part record."""
-        # Convert monetary fields - TM API returns floats like "0.0", DB expects INTEGER
+        # Convert all integer fields - TM API returns floats like "0.0", DB expects INTEGER
+        tm_id = self._to_int(tm_data.get("id"))
         retail = self._to_cents(tm_data.get("retail"))
         cost = self._to_cents(tm_data.get("cost"))
         core_charge = self._to_cents(tm_data.get("coreCharge"))
+        vendor_id = self._to_int(tm_data.get("vendorId"))
         quantity = tm_data.get("quantity", 1) or 1
 
         data = {
             "shop_id": shop_uuid,
-            "tm_id": tm_data.get("id"),
+            "tm_id": tm_id,
             "job_id": job_uuid,
             "repair_order_id": ro_uuid,
             "tm_job_id": tm_job_id,
@@ -654,7 +671,7 @@ class WarehouseClient:
             "cost": cost,
             "core_charge": core_charge,
             "total": retail * quantity,
-            "vendor_id": tm_data.get("vendorId"),
+            "vendor_id": vendor_id,
             "vendor_name": tm_data.get("vendorName"),
             "manufacturer": tm_data.get("brand"),
             "ordered": tm_data.get("ordered", False),
@@ -667,11 +684,11 @@ class WarehouseClient:
 
         # Parts may not have TM ID - use explicit insert/update logic
         # (partial unique index doesn't work with ON CONFLICT column syntax)
-        if tm_data.get("id"):
+        if tm_id:
             existing = self.supabase.table("job_parts") \
                 .select("id") \
                 .eq("shop_id", shop_uuid) \
-                .eq("tm_id", tm_data["id"]) \
+                .eq("tm_id", tm_id) \
                 .limit(1) \
                 .execute()
 
@@ -712,13 +729,15 @@ class WarehouseClient:
         """Upsert job labor record."""
         tech = tm_data.get("technician", {}) or {}
 
-        # Convert monetary fields - TM API may return floats, DB expects INTEGER
+        # Convert all integer fields - TM API may return floats, DB expects INTEGER
+        tm_id = self._to_int(tm_data.get("id"))
+        tm_technician_id = self._to_int(tech.get("id"))
         rate = self._to_cents(tm_data.get("rate"))
         total = self._to_cents(tm_data.get("total"))
 
         data = {
             "shop_id": shop_uuid,
-            "tm_id": tm_data.get("id"),
+            "tm_id": tm_id,
             "job_id": job_uuid,
             "repair_order_id": ro_uuid,
             "tm_job_id": tm_job_id,
@@ -730,7 +749,7 @@ class WarehouseClient:
             "rate": rate,
             "total": total,
             "technician_id": technician_uuid,
-            "tm_technician_id": tech.get("id"),
+            "tm_technician_id": tm_technician_id,
             "technician_name": tech.get("fullName"),
             "skill_level": tm_data.get("skillLevel"),
             "tm_extra": {},
@@ -753,11 +772,11 @@ class WarehouseClient:
 
         # Labor may not have TM ID - use explicit insert/update logic
         # (partial unique index doesn't work with ON CONFLICT column syntax)
-        if tm_data.get("id"):
+        if tm_id:
             existing = self.supabase.table("job_labor") \
                 .select("id") \
                 .eq("shop_id", shop_uuid) \
-                .eq("tm_id", tm_data["id"]) \
+                .eq("tm_id", tm_id) \
                 .limit(1) \
                 .execute()
 
@@ -793,20 +812,22 @@ class WarehouseClient:
         tm_data: Dict
     ) -> Tuple[str, bool]:
         """Upsert job sublet record."""
-        # Convert monetary fields - TM API may return floats, DB expects INTEGER
+        # Convert all integer fields - TM API may return floats, DB expects INTEGER
+        tm_id = self._to_int(tm_data.get("id"))
+        vendor_id = self._to_int(tm_data.get("vendorId"))
         cost = self._to_cents(tm_data.get("cost"))
         retail = self._to_cents(tm_data.get("retail"))
 
         data = {
             "shop_id": shop_uuid,
-            "tm_id": tm_data.get("id"),
+            "tm_id": tm_id,
             "job_id": job_uuid,
             "repair_order_id": ro_uuid,
             "tm_job_id": tm_job_id,
             "tm_repair_order_id": tm_ro_id,
             "name": tm_data.get("name", "Sublet"),
             "description": tm_data.get("description"),
-            "vendor_id": tm_data.get("vendorId"),
+            "vendor_id": vendor_id,
             "vendor_name": tm_data.get("vendorName"),
             "cost": cost,
             "retail": retail,
@@ -818,11 +839,11 @@ class WarehouseClient:
 
         # Sublets may not have TM ID - use explicit insert/update logic
         # (partial unique index doesn't work with ON CONFLICT column syntax)
-        if tm_data.get("id"):
+        if tm_id:
             existing = self.supabase.table("job_sublets") \
                 .select("id") \
                 .eq("shop_id", shop_uuid) \
-                .eq("tm_id", tm_data["id"]) \
+                .eq("tm_id", tm_id) \
                 .limit(1) \
                 .execute()
 
