@@ -29,7 +29,9 @@ async def sync_repair_orders(
 
     Args:
         tm_shop_id: Tekmetric shop ID
-        days_back: How many days back to sync (filters by updatedDate)
+        days_back: How many days back to sync
+                   - POSTED board: filters by postedDate (historical invoices)
+                   - ACTIVE board: filters by updatedDate (WIP)
         board: Which board to sync: ACTIVE, POSTED, or ALL
         store_raw: Store raw API responses for debugging
         limit: Max number of ROs to sync (for testing)
@@ -150,47 +152,83 @@ async def _discover_ros(
 ) -> List[Dict]:
     """
     Discover ROs to sync using job-board endpoint.
-    Filters by updatedDate to get recently changed ROs.
+
+    PAGINATION: Iterates through all pages until empty response.
+
+    DATE FILTERING:
+    - POSTED board: filters by postedDate (for historical backfills)
+    - ACTIVE board: filters by updatedDate (for incremental syncs)
     """
     cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_back)
     all_ros = []
+    seen_ro_ids = set()  # Dedupe across boards
 
     boards_to_fetch = ["ACTIVE", "POSTED"] if board == "ALL" else [board]
 
     for b in boards_to_fetch:
+        page = 0
+        board_ros = []
+
         try:
-            # Fetch from job-board endpoint
-            ros = await sync.tm.get(
-                f"/api/shop/{tm_shop_id}/job-board-group-by",
-                params={
-                    "view": "list",
-                    "board": b,
-                    "page": 0,
-                    "groupBy": "NONE"
-                }
-            )
+            # PAGINATION LOOP: fetch all pages
+            while True:
+                ros = await sync.tm.get(
+                    f"/api/shop/{tm_shop_id}/job-board-group-by",
+                    params={
+                        "view": "list",
+                        "board": b,
+                        "page": page,
+                        "groupBy": "NONE"
+                    }
+                )
 
-            if not isinstance(ros, list):
-                ros = ros.get("content", []) if isinstance(ros, dict) else []
+                if not isinstance(ros, list):
+                    ros = ros.get("content", []) if isinstance(ros, dict) else []
 
-            # Filter by updatedDate
-            for ro in ros:
-                updated_str = ro.get("updatedDate")
-                if updated_str:
+                # Empty page = done with this board
+                if not ros:
+                    break
+
+                board_ros.extend(ros)
+                page += 1
+
+                # Safety limit to prevent infinite loops
+                if page > 100:
+                    break
+
+            # Choose date field based on board type
+            # POSTED board = historical invoices, filter by postedDate
+            # ACTIVE board = WIP, filter by updatedDate
+            date_field = "postedDate" if b == "POSTED" else "updatedDate"
+
+            # Filter by appropriate date field
+            for ro in board_ros:
+                ro_id = ro.get("id")
+
+                # Dedupe (same RO could appear on multiple boards)
+                if ro_id in seen_ro_ids:
+                    continue
+
+                date_str = ro.get(date_field) or ro.get("updatedDate")
+                if date_str:
                     try:
-                        updated = datetime.fromisoformat(updated_str.replace("Z", "+00:00"))
-                        if updated >= cutoff_date:
+                        date_val = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                        if date_val >= cutoff_date:
                             all_ros.append(ro)
+                            seen_ro_ids.add(ro_id)
                     except:
                         # Include if we can't parse date
                         all_ros.append(ro)
+                        seen_ro_ids.add(ro_id)
                 else:
+                    # Include if no date field
                     all_ros.append(ro)
+                    seen_ro_ids.add(ro_id)
 
             # Store raw if debugging
             await sync.store_payload(
                 endpoint=f"/api/shop/{tm_shop_id}/job-board-group-by",
-                response={"board": b, "count": len(ros)},
+                response={"board": b, "pages_fetched": page, "total_ros": len(board_ros)},
                 request_params={"board": b}
             )
 
