@@ -1,0 +1,23 @@
+Yes, you should do all of this yourself in the hosted environment.
+
+Deploy the updated code to Railway (if it is not already deployed), then run the full 30-day historical sync on the live service:
+
+GET https://tm-fastapi-backend-production.up.railway.app/api/sync/repair-orders/historical?shop_id=6212&start_date=2025-10-29&end_date=2025-11-28
+
+After that finishes, immediately rebuild snapshots and daily metrics for the same window:
+
+POST https://tm-fastapi-backend-production.up.railway.app/api/sync/snapshots/build?shop_id=6212&start_date=2025-10-29&end_date=2025-11-28
+
+POST https://tm-fastapi-backend-production.up.railway.app/api/sync/metrics/daily/rebuild?shop_id=6212&start_date=2025-10-29&end_date=2025-11-28
+
+Then give me a concise report with:
+
+discovered, created, and updated RO counts from the historical sync
+
+new total row counts for repair_orders, jobs, job_parts, job_labor, ro_snapshots, daily_shop_metrics
+
+5 sample daily metrics rows around 2025-11-26
+
+any errors or edge cases you saw during the historical sync
+
+Run everything end-to-end yourself; don’t ask me to curl anything.

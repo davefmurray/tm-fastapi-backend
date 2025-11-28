@@ -1,0 +1,77 @@
+Drop the CSV import idea for now. I want to solve this by discovering and using more Tekmetric API endpoints, not manual reports.
+
+We already know this: if the Tekmetric web UI can open a historical RO like this:
+
+https://shop.tekmetric.com/admin/shop/6212/repair-orders/273591254/estimate
+
+…then the browser is calling one or more backend API endpoints that return that RO’s data, even if it doesn’t show up on the job board.
+
+Your job now is to switch into “endpoint discovery” mode and use Chrome DevTools MCP plus our existing /dev documentation to find those APIs and figure out how to use them for historical ROs.
+
+Do the following:
+
+Read our existing process in /dev
+Look in the repo under /dev (or any docs we’ve written) for anything related to:
+
+Chrome DevTools MCP usage
+
+endpoint discovery
+
+Tekmetric scraping or recording
+Follow whatever process we already defined there so you stay consistent with how we want to discover endpoints.
+
+Use Chrome DevTools MCP on that RO URL
+Using Chrome DevTools MCP, load this page in the existing authenticated browser session:
+
+https://shop.tekmetric.com/admin/shop/6212/repair-orders/273591254/estimate
+
+Then:
+
+Open the Network tab
+
+Filter to XHR/fetch calls
+
+Reload the page
+
+Look for any calls that return JSON for this RO: endpoints containing “repair-order”, “estimate”, “history”, “search”, etc.
+Document:
+
+The full request URL(s)
+
+HTTP method
+
+Any query params (especially anything like date ranges, shopId, search filters)
+
+Find how the UI lists historical ROs
+Go in the UI (via DevTools MCP) to whatever page shows a list of past/historical/archived ROs (not just the job board). For example, any “All Repair Orders”, “History”, or “Search ROs” screen in Tekmetric.
+
+Again:
+
+Open Network
+
+Filter to XHR/fetch
+
+Change filters or date ranges in the UI
+
+Capture the API calls that return lists of ROs
+
+Your goal is to find one or more endpoints that:
+
+Return lists of ROs for a date range
+
+Work for older, archived ROs (not just what’s on the job board)
+
+Let us request data by date range, status, or search term
+
+Report back clearly
+In your next reply, I want:
+
+A list of the new endpoints you discovered (URL patterns, e.g. /api/repair-orders/search, /api/reporting/repair-orders, etc.)
+
+For each endpoint, an example request and response shape
+
+Your best guess at which endpoint we can use to pull historical RO data in bulk (by date range, status, etc.)
+
+A proposal for how to integrate that endpoint (or endpoints) into our sync pipeline so we can fill in the missing ~500 ROs per 30-day period.
+
+Do not talk about CSV again unless I ask. Focus completely on discovering and using the same API endpoints that the Tekmetric UI uses for historical ROs, starting from the example RO URL I gave you.

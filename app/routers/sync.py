@@ -20,7 +20,7 @@ from app.sync import (
     sync_vehicles,
     sync_repair_orders,
 )
-from app.sync.sync_repair_orders import sync_single_repair_order
+from app.sync.sync_repair_orders import sync_single_repair_order, sync_historical_repair_orders
 from app.sync.snapshot_builder import get_snapshot_builder
 from app.sync.metrics_aggregator import get_metrics_aggregator
 
@@ -199,6 +199,57 @@ async def trigger_single_ro_sync(
         raise HTTPException(status_code=500, detail=result.get("error", "Sync failed"))
 
     return result
+
+
+@router.get("/repair-orders/historical")
+async def trigger_historical_ro_sync(
+    shop_id: int = Query(default=DEFAULT_SHOP_ID, description="TM Shop ID"),
+    start_date: str = Query(..., description="Start date (YYYY-MM-DD)"),
+    end_date: str = Query(..., description="End date (YYYY-MM-DD)"),
+    limit: Optional[int] = Query(default=None, ge=1, le=1000, description="Max ROs to sync (for testing)"),
+    store_raw: bool = Query(default=False, description="Store raw API responses for debugging")
+):
+    """
+    Sync historical repair orders using profit-details-report endpoint.
+
+    THIS IS THE PREFERRED METHOD FOR BACKFILLS.
+
+    Unlike the regular /repair-orders endpoint which only finds ~81 active ROs,
+    this endpoint discovers ALL posted ROs in the date range using TM's
+    reporting API (same one that powers their Profit Details Report).
+
+    For a 30-day period, this typically finds 400-500+ ROs vs ~81 from job-board.
+
+    Example:
+        GET /api/sync/repair-orders/historical?start_date=2025-10-29&end_date=2025-11-28
+
+    Parameters:
+    - start_date: Start of date range (YYYY-MM-DD)
+    - end_date: End of date range (YYYY-MM-DD)
+    - limit: Cap on number of ROs for testing
+    - store_raw: Store API responses in tm_raw_payloads for debugging
+    """
+    try:
+        logger.info(f"Starting HISTORICAL RO sync for shop_id={shop_id}, {start_date} to {end_date}")
+        result = await sync_historical_repair_orders(
+            tm_shop_id=shop_id,
+            start_date=start_date,
+            end_date=end_date,
+            store_raw=store_raw,
+            limit=limit
+        )
+        logger.info(f"Historical RO sync result: discovered={result.get('discovered')}, created={result.get('created')}")
+
+        if result["status"] == "failed":
+            raise HTTPException(status_code=500, detail=result.get("error", "Sync failed"))
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(f"Historical RO sync error: {e}\n{error_trace}")
+        raise HTTPException(status_code=500, detail=f"Sync error: {str(e)}\n{error_trace}")
 
 
 @router.get("/full-backfill")

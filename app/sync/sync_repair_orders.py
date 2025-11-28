@@ -251,6 +251,255 @@ async def _discover_ros(
     return all_ros
 
 
+async def _discover_ros_via_report(
+    sync: SyncBase,
+    tm_shop_id: int,
+    start_date: str,
+    end_date: str,
+    page_size: int = 100
+) -> List[Dict]:
+    """
+    Discover ROs using the profit-details-report endpoint.
+
+    This endpoint returns ALL historical ROs within a date range,
+    unlike job-board which only returns ~81 active ROs.
+
+    Uses cursor-based pagination with nextKeys parameter.
+
+    Args:
+        sync: SyncBase instance
+        tm_shop_id: Tekmetric shop ID
+        start_date: Start date (YYYY-MM-DD)
+        end_date: End date (YYYY-MM-DD)
+        page_size: Number of ROs per page (default 100)
+
+    Returns:
+        List of RO summary dicts with repairOrderId for full fetch
+    """
+    all_ros = []
+    next_keys = None
+    page_count = 0
+
+    # Format dates with timezone for TM API
+    # TM expects: 2025-11-01T00:00:00.000-05:00
+    start_formatted = f"{start_date}T00:00:00.000-05:00"
+    end_formatted = f"{end_date}T23:59:59.999-05:00"
+
+    try:
+        while True:
+            params = {
+                "timezone": "America/New_York",
+                "size": page_size,
+                "shopIds": str(tm_shop_id),
+                "start": start_formatted,
+                "end": end_formatted,
+                "sortBy": "POSTED_DATE",
+                "sortOrder": "DESC"
+            }
+
+            # Add cursor for subsequent pages
+            if next_keys:
+                params["nextKeys"] = next_keys
+
+            response = await sync.tm.get(
+                "/api/reporting/profit-details-report",
+                params=params
+            )
+
+            if not response:
+                break
+
+            content = response.get("content", [])
+            if not content:
+                break
+
+            # Transform to match expected RO format for _sync_single_ro
+            for item in content:
+                ro_summary = {
+                    "id": item.get("repairOrderId"),
+                    "roNumber": item.get("repairOrderNumber"),
+                    "customerId": item.get("customerId"),
+                    "vehicleId": item.get("vehicleId"),
+                    "serviceWriterId": item.get("serviceWriterId"),
+                    "postedDate": item.get("postedDate"),
+                    # Include profit data from report for reference
+                    "_reportProfit": {
+                        "laborProfit": item.get("laborProfit"),
+                        "partsTotalProfit": item.get("partsTotalProfit"),
+                        "subletProfit": item.get("subletProfit"),
+                        "feesProfit": item.get("feesProfit"),
+                        "totalProfit": item.get("totalProfit"),
+                        "totalProfitMargin": item.get("totalProfitMargin")
+                    }
+                }
+                all_ros.append(ro_summary)
+
+            page_count += 1
+
+            # Check for more pages
+            if not response.get("hasNext"):
+                break
+
+            next_keys = response.get("nextKeys")
+            if not next_keys:
+                break
+
+            # Safety limit
+            if page_count > 50:
+                break
+
+        # Store discovery summary
+        await sync.store_payload(
+            endpoint="/api/reporting/profit-details-report",
+            response={
+                "pages_fetched": page_count,
+                "total_ros_discovered": len(all_ros),
+                "date_range": f"{start_date} to {end_date}"
+            },
+            request_params={"start": start_date, "end": end_date}
+        )
+
+    except Exception as e:
+        sync.stats.add_error("discover_ros_report", None, str(e))
+
+    return all_ros
+
+
+async def sync_historical_repair_orders(
+    tm_shop_id: int,
+    start_date: str,
+    end_date: str,
+    store_raw: bool = False,
+    limit: Optional[int] = None
+) -> Dict:
+    """
+    Sync historical repair orders using profit-details-report endpoint.
+
+    This is the preferred method for backfilling historical ROs as it
+    discovers ALL posted ROs in a date range (not just active ones).
+
+    Args:
+        tm_shop_id: Tekmetric shop ID
+        start_date: Start date (YYYY-MM-DD)
+        end_date: End date (YYYY-MM-DD)
+        store_raw: Store raw API responses for debugging
+        limit: Max number of ROs to sync (for testing)
+
+    Returns:
+        Dict with sync results
+    """
+    sync = SyncBase()
+    sync.store_raw_payloads = store_raw
+
+    try:
+        # Initialize shop
+        shop_uuid = await sync.init_shop(tm_shop_id)
+
+        # Start sync log
+        await sync.start_sync(
+            sync_type="historical",
+            entity_type="repair_orders",
+            metadata={
+                "tm_shop_id": tm_shop_id,
+                "start_date": start_date,
+                "end_date": end_date,
+                "method": "profit-details-report",
+                "limit": limit
+            }
+        )
+
+        # Discover ROs using report endpoint
+        ros_discovered = await _discover_ros_via_report(
+            sync, tm_shop_id, start_date, end_date
+        )
+
+        if limit:
+            ros_discovered = ros_discovered[:limit]
+
+        sync.stats.fetched = len(ros_discovered)
+
+        # Track totals
+        jobs_created = 0
+        jobs_updated = 0
+        parts_count = 0
+        labor_count = 0
+        sublets_count = 0
+        fees_count = 0
+
+        # Process each discovered RO
+        for ro_summary in ros_discovered:
+            tm_ro_id = ro_summary.get("id")
+            if not tm_ro_id:
+                sync.stats.skipped += 1
+                continue
+
+            try:
+                # Fetch full RO data from TM
+                ro_data = await sync.tm.get(
+                    f"/api/shop/{tm_shop_id}/repair-order/{tm_ro_id}"
+                )
+
+                if not ro_data:
+                    sync.stats.add_error("fetch_ro", tm_ro_id, "RO not found")
+                    sync.stats.skipped += 1
+                    continue
+
+                # Sync the RO with full data
+                result = await _sync_single_ro(sync, shop_uuid, tm_shop_id, ro_data)
+
+                if result["status"] == "created":
+                    sync.stats.created += 1
+                elif result["status"] == "updated":
+                    sync.stats.updated += 1
+                else:
+                    sync.stats.skipped += 1
+
+                # Accumulate child entity counts
+                jobs_created += result.get("jobs_created", 0)
+                jobs_updated += result.get("jobs_updated", 0)
+                parts_count += result.get("parts", 0)
+                labor_count += result.get("labor", 0)
+                sublets_count += result.get("sublets", 0)
+                fees_count += result.get("fees", 0)
+
+            except Exception as e:
+                sync.stats.add_error("repair_order", tm_ro_id, str(e))
+                sync.stats.skipped += 1
+
+        await sync.complete_sync()
+
+        return {
+            "status": "completed",
+            "shop_id": tm_shop_id,
+            "entity_type": "repair_orders",
+            "method": "historical (profit-details-report)",
+            "date_range": f"{start_date} to {end_date}",
+            "discovered": len(ros_discovered),
+            "fetched": sync.stats.fetched,
+            "created": sync.stats.created,
+            "updated": sync.stats.updated,
+            "skipped": sync.stats.skipped,
+            "errors": len(sync.stats.errors),
+            "child_entities": {
+                "jobs_created": jobs_created,
+                "jobs_updated": jobs_updated,
+                "parts": parts_count,
+                "labor": labor_count,
+                "sublets": sublets_count,
+                "fees": fees_count
+            }
+        }
+
+    except Exception as e:
+        await sync.fail_sync(str(e))
+        return {
+            "status": "failed",
+            "shop_id": tm_shop_id,
+            "entity_type": "repair_orders",
+            "error": str(e)
+        }
+
+
 async def _sync_single_ro(
     sync: SyncBase,
     shop_uuid: str,
