@@ -145,7 +145,7 @@ async def get_kpi_summary(
 
     if not rows:
         return {
-            "period": {"start": start, "end": end, "range_type": range_type},
+            "period": {"start": start, "end": end, "range_type": range_type, "days_with_data": 0},
             "kpis": {
                 "revenue": 0,
                 "car_count": 0,
@@ -156,7 +156,11 @@ async def get_kpi_summary(
                 "aro": 0,
                 "effective_labor_rate": 0
             },
-            "days_with_data": 0,
+            "breakdown": {
+                "labor": {"revenue": 0, "profit": 0, "gp_percent": 0},
+                "parts": {"revenue": 0, "profit": 0, "gp_percent": 0}
+            },
+            "source": "daily_shop_metrics",
             "message": "No data for this period"
         }
 
