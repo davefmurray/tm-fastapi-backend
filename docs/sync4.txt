@@ -1,0 +1,81 @@
+Set SUPABASE_SERVICE_KEY on Railway and move to the snapshot/metrics phase now.
+
+Supabase service key and RLS
+
+We are now ready to switch the warehouse writes to the Supabase service_role key.
+
+Do the following:
+
+In the Railway service for tm-fastapi-backend-production, add:
+SUPABASE_SERVICE_KEY = (Supabase service_role key for project oummojcsghoitfhpscnn)
+
+Update the warehouse_client so that all server-side Supabase writes and sync operations use SUPABASE_SERVICE_KEY, not the anon key. The anon key can still exist for any purely public read-only use, but the sync and warehouse code must use the service key.
+
+Confirm that RLS is still enabled on all warehouse tables, and that the service key can read and write to all of them without errors.
+
+After this change, redeploy and run a small RO sync again (for example days_back=1). Confirm that:
+sync_log still shows errors = 0
+row counts for repair_orders, jobs, job_parts, job_labor, vehicles, customers all increase or stay stable with no permission errors.
+
+Begin implementing ro_snapshots
+
+Now that repair orders and line items are syncing cleanly, start building the ro_snapshots layer as described in Supabase-warehouse-spec.md.
+
+Implement:
+
+A snapshot builder that:
+a) Finds repair_orders with posted_date or completed_date
+b) For each qualifying RO, computes a snapshot row in ro_snapshots using the canonical authorized and potential metrics:
+authorized_revenue, authorized_cost, authorized_profit, authorized_gp_percent
+category breakdowns (parts, labor, sublet, fees, tax)
+potential_revenue and potential_job_count
+c) Uses the TRUE_GP calculation rules and metric contracts we defined (METRIC_CONTRACTS.md).
+
+Ensure that the snapshot key (shop_id, repair_order_id, snapshot_date, snapshot_trigger) is respected so repeated runs are idempotent (update existing snapshot instead of duplicating).
+
+Create a FastAPI route or internal function like:
+POST /api/snapshots/build?shop_id=6212&days_back=3
+that builds or refreshes snapshots for ROs whose posted_date or completed_date falls in that window.
+
+After building snapshots for the last few days, run queries against ro_snapshots to verify:
+
+Count of snapshots
+
+Basic sums for authorized_revenue, authorized_profit, and gp% for a date like 2025-11-26, and compare it roughly to TM’s profit/labor report or your audit numbers.
+
+Implement daily_shop_metrics aggregator
+
+Once ro_snapshots is working, implement the daily_shop_metrics pipeline:
+
+A function that aggregates ro_snapshots by (shop_id, snapshot_date) into daily_shop_metrics, using:
+sums for authorized_revenue, authorized_profit, parts/labor/sublet/tax/fees
+counts of ROs and job counts
+derived metrics like authorized_gp_percent, avg_ro_value, gp_per_labor_hour, potential_revenue, authorization_rate
+
+Ensure daily_shop_metrics rows are unique on (shop_id, metric_date) and can be safely recomputed (upsert instead of insert-only).
+
+Create a FastAPI route like:
+POST /api/metrics/daily/rebuild?shop_id=6212&start_date=2025-11-20&end_date=2025-11-27
+that rebuilds daily metrics from ro_snapshots for a given date range.
+
+After building daily metrics for a small date range, run a few validation queries against Supabase, for example:
+
+Select metric_date, authorized_revenue, authorized_profit, authorized_gp_percent from daily_shop_metrics for the last 7 days
+
+Confirm that the numbers make sense relative to the underlying ro_snapshots and repair_orders.
+
+Ops Summary
+
+At the end of your next reply, include an Ops Summary that tells me:
+
+Whether SUPABASE_SERVICE_KEY is now set and used
+
+The latest deployment status and commit hash
+
+Current counts for ro_snapshots and daily_shop_metrics
+
+A couple of sample metric rows (dates and their authorized_revenue/authorized_profit/gp%)
+
+Any remaining TODOs or concerns before we move on to building the actual dashboard queries and UI on top of daily_shop_metrics.
+
+service role key eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bW1vamNzZ2hvaXRmaHBzY25uIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MzY1MTAwNCwiZXhwIjoyMDY5MjI3MDA0fQ.3owepKcQ0iePzTf6HnyYqrziW2bFBnArnm4JiShCdTk

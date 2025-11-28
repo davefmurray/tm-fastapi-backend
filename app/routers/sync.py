@@ -21,6 +21,8 @@ from app.sync import (
     sync_repair_orders,
 )
 from app.sync.sync_repair_orders import sync_single_repair_order
+from app.sync.snapshot_builder import get_snapshot_builder
+from app.sync.metrics_aggregator import get_metrics_aggregator
 
 router = APIRouter()
 
@@ -240,3 +242,133 @@ async def trigger_full_backfill(
         "days_back": days_back,
         "results": results
     }
+
+
+# =============================================================================
+# SNAPSHOT AND METRICS ENDPOINTS
+# =============================================================================
+
+@router.post("/snapshots/build")
+async def build_ro_snapshots(
+    shop_id: int = Query(default=DEFAULT_SHOP_ID, description="TM Shop ID"),
+    days_back: int = Query(default=3, ge=1, le=365, description="Days back to build snapshots"),
+    start_date: Optional[str] = Query(default=None, description="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(default=None, description="End date (YYYY-MM-DD)")
+):
+    """
+    Build RO snapshots for repair orders with posted_date or completed_date in the date range.
+
+    This builds ro_snapshots from repair_orders and their line items.
+    Snapshots capture point-in-time metrics for each RO.
+
+    The snapshot key (shop_id, repair_order_id, snapshot_date, snapshot_trigger)
+    is respected - repeated runs update existing snapshots (idempotent).
+
+    Parameters:
+    - shop_id: TM shop ID
+    - days_back: Days back from today (ignored if dates provided)
+    - start_date: Optional explicit start date (YYYY-MM-DD)
+    - end_date: Optional explicit end date (YYYY-MM-DD)
+    """
+    try:
+        builder = get_snapshot_builder()
+        result = builder.build_snapshots_for_period(
+            shop_id=shop_id,
+            days_back=days_back,
+            start_date=start_date,
+            end_date=end_date
+        )
+
+        if result.get("status") == "error":
+            raise HTTPException(status_code=400, detail=result.get("message", "Build failed"))
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(f"Snapshot build error: {e}\n{error_trace}")
+        raise HTTPException(status_code=500, detail=f"Build error: {str(e)}")
+
+
+@router.post("/metrics/daily/rebuild")
+async def rebuild_daily_metrics(
+    shop_id: int = Query(default=DEFAULT_SHOP_ID, description="TM Shop ID"),
+    start_date: str = Query(..., description="Start date (YYYY-MM-DD)"),
+    end_date: str = Query(..., description="End date (YYYY-MM-DD)")
+):
+    """
+    Rebuild daily_shop_metrics from ro_snapshots for a date range.
+
+    This aggregates ro_snapshots into daily_shop_metrics.
+    Metrics are unique on (shop_id, metric_date) - safe to re-run.
+
+    IMPORTANT: Run /snapshots/build first to ensure ro_snapshots exist.
+
+    Parameters:
+    - shop_id: TM shop ID
+    - start_date: Start date (YYYY-MM-DD)
+    - end_date: End date (YYYY-MM-DD)
+    """
+    try:
+        aggregator = get_metrics_aggregator()
+        result = aggregator.rebuild_daily_metrics(
+            shop_id=shop_id,
+            start_date=start_date,
+            end_date=end_date
+        )
+
+        if result.get("status") == "error":
+            raise HTTPException(status_code=400, detail=result.get("message", "Rebuild failed"))
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(f"Metrics rebuild error: {e}\n{error_trace}")
+        raise HTTPException(status_code=500, detail=f"Rebuild error: {str(e)}")
+
+
+@router.get("/metrics/daily")
+async def get_daily_metrics(
+    shop_id: int = Query(default=DEFAULT_SHOP_ID, description="TM Shop ID"),
+    start_date: str = Query(..., description="Start date (YYYY-MM-DD)"),
+    end_date: str = Query(..., description="End date (YYYY-MM-DD)")
+):
+    """
+    Get daily_shop_metrics for a date range.
+
+    Returns aggregated daily metrics including:
+    - authorized_revenue, authorized_cost, authorized_profit, authorized_gp_percent
+    - Category breakdowns (parts, labor, sublet, fees, tax)
+    - Averages (avg_ro_value, avg_ro_profit, gp_per_labor_hour)
+    - Potential metrics and authorization_rate
+
+    Parameters:
+    - shop_id: TM shop ID
+    - start_date: Start date (YYYY-MM-DD)
+    - end_date: End date (YYYY-MM-DD)
+    """
+    try:
+        aggregator = get_metrics_aggregator()
+        metrics = aggregator.get_daily_metrics(
+            shop_id=shop_id,
+            start_date=start_date,
+            end_date=end_date
+        )
+
+        return {
+            "status": "ok",
+            "shop_id": shop_id,
+            "date_range": f"{start_date} to {end_date}",
+            "count": len(metrics),
+            "metrics": metrics
+        }
+
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(f"Get metrics error: {e}\n{error_trace}")
+        raise HTTPException(status_code=500, detail=f"Query error: {str(e)}")
