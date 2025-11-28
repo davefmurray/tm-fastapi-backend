@@ -1,0 +1,27 @@
+Apply the following refinements to the Supabase-warehouse-spec.md file before marking it approved. These are clarifications only, not structural changes.
+
+Money fields stored in cents
+All monetary fields are correctly stored as INTEGER in cents. Add a small note to the spec saying that this is intentional, and that if we later scale to very large multi-shop or multi-year data volumes, we may migrate these fields to BIGINT. This is a future scaling concern, not a change required now.
+
+Status and type fields should be treated as controlled vocabularies
+We are keeping these fields as TEXT, but document the expected values so dashboards and queries stay consistent. Examples:
+repair_orders.status = ESTIMATE, WORKINPROGRESS, POSTED, COMPLETE
+ro_snapshots.snapshot_trigger = posted, completed, manual
+job_fees.fee_type = shop_supplies, environmental, disposal, hazmat, other
+employees.role_name = Advisor, Technician, Service Advisor, Owner, Admin
+Add a short note to the spec explaining that these are controlled vocabularies, even though they are stored as TEXT.
+
+Date and time semantics
+Document that all TIMESTAMPTZ fields are stored in UTC, and all DATE fields (posted_date, metric_date, snapshot_date, etc.) are interpreted in the shop’s local timezone using shops.timezone. Add a note such as: “DATE fields are derived from timestamps using the shop’s timezone. TIMESTAMPTZ fields are stored in UTC. Daily metrics and RO posted dates must reflect the shop-local calendar day.”
+
+Foreign key delete behavior
+Clarify the intended behavior:
+TM is the system of record and we do not do application-initiated hard deletes of customers or vehicles. These tables are long-lived. Cascades from repair_orders to jobs and line-item tables are correct so cleaning an RO removes its children. Add a brief comment in the spec to make this intention explicit.
+
+Metric contracts as canonical definitions
+Add language to the spec stating that METRIC_CONTRACTS.md defines the canonical formulas for authorized revenue, authorized profit, GP percent, potential revenue, pending revenue, etc. Any dashboard or report must use those formulas directly or derive from fields computed using those formulas. This ensures there is only one definition of GP% and related metrics across the entire system.
+
+Clarify the difference between authorized_total and authorized_revenue
+In repair_orders, authorized_total comes from the estimate endpoint (authorized jobs retail totals across parts, labor, fees, etc.). authorized_revenue comes from /profit/labor totalProfit.retail (authorized revenue used for GP calculations). Add comments explaining this distinction so future queries don’t confuse the two.
+
+After adding these clarifications, the spec can be marked APPROVED FOR IMPLEMENTATION.

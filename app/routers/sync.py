@@ -7,6 +7,12 @@ FastAPI endpoints for triggering warehouse sync operations.
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 import os
+import traceback
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 from app.sync import (
     sync_employees,
@@ -22,6 +28,22 @@ router = APIRouter()
 DEFAULT_SHOP_ID = int(os.getenv("TM_SHOP_ID", "6212"))
 
 
+@router.get("/status")
+async def sync_status():
+    """
+    Check sync module status and configuration.
+    """
+    return {
+        "status": "ok",
+        "default_shop_id": DEFAULT_SHOP_ID,
+        "supabase_url": os.getenv("SUPABASE_URL", "NOT SET"),
+        "has_service_key": bool(os.getenv("SUPABASE_SERVICE_KEY")),
+        "has_anon_key": bool(os.getenv("SUPABASE_KEY")),
+        "tm_base_url": os.getenv("TM_BASE_URL", "NOT SET"),
+        "tm_shop_id": os.getenv("TM_SHOP_ID", "NOT SET"),
+    }
+
+
 @router.get("/employees")
 async def trigger_employee_sync(
     shop_id: int = Query(default=DEFAULT_SHOP_ID, description="TM Shop ID"),
@@ -33,12 +55,21 @@ async def trigger_employee_sync(
     This syncs technicians and advisors needed for RO processing.
     Run this before syncing repair orders.
     """
-    result = await sync_employees(shop_id, store_raw=store_raw)
+    try:
+        logger.info(f"Starting employee sync for shop_id={shop_id}")
+        result = await sync_employees(shop_id, store_raw=store_raw)
+        logger.info(f"Employee sync result: {result.get('status')}")
 
-    if result["status"] == "failed":
-        raise HTTPException(status_code=500, detail=result.get("error", "Sync failed"))
+        if result["status"] == "failed":
+            raise HTTPException(status_code=500, detail=result.get("error", "Sync failed"))
 
-    return result
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(f"Employee sync error: {e}\n{error_trace}")
+        raise HTTPException(status_code=500, detail=f"Sync error: {str(e)}\n{error_trace}")
 
 
 @router.get("/customers")
@@ -107,21 +138,30 @@ async def trigger_ro_sync(
     - limit: Cap on number of ROs for testing
     - store_raw: Store API responses in tm_raw_payloads for debugging
     """
-    if board not in ["ACTIVE", "POSTED", "ALL"]:
-        raise HTTPException(status_code=400, detail="board must be ACTIVE, POSTED, or ALL")
+    try:
+        if board not in ["ACTIVE", "POSTED", "ALL"]:
+            raise HTTPException(status_code=400, detail="board must be ACTIVE, POSTED, or ALL")
 
-    result = await sync_repair_orders(
-        tm_shop_id=shop_id,
-        days_back=days_back,
-        board=board,
-        store_raw=store_raw,
-        limit=limit
-    )
+        logger.info(f"Starting RO sync for shop_id={shop_id}, days_back={days_back}, board={board}")
+        result = await sync_repair_orders(
+            tm_shop_id=shop_id,
+            days_back=days_back,
+            board=board,
+            store_raw=store_raw,
+            limit=limit
+        )
+        logger.info(f"RO sync result: {result.get('status')}")
 
-    if result["status"] == "failed":
-        raise HTTPException(status_code=500, detail=result.get("error", "Sync failed"))
+        if result["status"] == "failed":
+            raise HTTPException(status_code=500, detail=result.get("error", "Sync failed"))
 
-    return result
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(f"RO sync error: {e}\n{error_trace}")
+        raise HTTPException(status_code=500, detail=f"Sync error: {str(e)}\n{error_trace}")
 
 
 @router.get("/repair-orders/{ro_id}")

@@ -1,0 +1,98 @@
+MASTER PROMPT START
+
+You are allowed to fully execute tasks using Supabase MCP, GitHub MCP, Railway MCP, and Chrome DevTools MCP. You may create files, write migrations, commit directly to the main branch, apply schema changes, deploy to Railway, run sync jobs, and reorganize the repo as needed. This is a greenfield environment with no real production data, so you are allowed to build aggressively and autonomously.
+
+However, you must leave full breadcrumbs behind you so everything you do is reviewable and traceable later.
+
+Follow these rules:
+
+GitHub Breadcrumb Rules
+
+Commit directly to main is allowed.
+
+Every commit must have a clear, human-readable commit message describing exactly what changed.
+
+Maintain a running progress log at docs/WAREHOUSE_PROGRESS.md. Every time you perform meaningful work, append an entry including:
+Date/time
+Summary of what you built or changed
+Files modified or created
+Any migrations applied
+Any TODOs or open questions
+This file becomes the chronological narrative of everything that has happened.
+
+Database (Supabase MCP) Breadcrumb Rules
+
+All schema changes must happen via SQL migrations stored in db/migrations/.
+
+After generating migrations, you may apply them via Supabase MCP.
+
+After applying migrations, always:
+a) run a schema inspection query and paste results in your reply
+b) update docs/schema_dump.sql with a fresh DDL dump
+
+Use sync_log, sync_cursors, and tm_raw_payloads as operational breadcrumbs for all sync-related operations.
+
+Railway Breadcrumb Rules
+
+Deployments are allowed automatically from main.
+
+Every deployment must append an entry to docs/DEPLOY_LOG.md with:
+Date/time
+Commit hash
+Summary of changes deployed
+Any issues encountered
+
+Ops Summary Requirement
+After every significant working session (creating migrations, applying schema, writing sync jobs, building the snapshot pipeline, wiring dashboards), include an “Ops Summary” at the end of your reply with:
+
+What you changed or created
+
+Which files you touched
+
+Any migrations that were applied
+
+Any next steps you identify
+
+Full Autonomy Granted
+You are allowed to:
+
+Create SQL migrations
+
+Apply schema changes
+
+Write FastAPI sync services
+
+Build snapshot and metrics pipelines
+
+Modify API routing
+
+Generate Supabase functions or triggers
+
+Deploy updates to Railway
+
+Write frontend dashboard components
+
+Run incremental sync jobs
+
+Analyze Tekmetric API data
+
+Update or reorganize the repo structure
+
+As long as breadcrumb rules are followed, you have full permission to build at maximum speed.
+
+Starting Point
+Begin immediately by:
+
+Generating all SQL migrations required by Supabase-warehouse-spec.md
+
+Saving all migrations into db/migrations/ on the main branch
+
+Applying the migrations to Supabase MCP
+
+Updating docs/schema_dump.sql and docs/WAREHOUSE_PROGRESS.md
+
+Returning an Ops Summary
+
+Continue iterating until the full warehouse, sync system, snapshot layer, and daily metrics pipeline are implemented and deployed. Ask questions only if the spec is unclear; otherwise proceed with full autonomy.
+
+MASTER PROMPT END

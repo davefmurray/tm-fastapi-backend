@@ -1,0 +1,71 @@
+The sync service implementation looks great, but this all needs to be fully hosted and managed by you, not run manually on my laptop.
+
+Switch into “hosted production” mode now and integrate this with Railway and Supabase using the MCP tools:
+
+Deploy to Railway
+Use the Railway MCP to:
+
+Ensure the FastAPI backend (main branch) is deployed as a live web service
+
+Confirm that the service is running and reachable publicly (get the base URL)
+
+Update docs/DEPLOY_LOG.md with the deployment details
+
+Configure environment variables on Railway
+All of the following MUST be configured in the Railway service environment (do not assume local .env):
+
+SUPABASE_URL
+
+SUPABASE_SERVICE_KEY (service_role key)
+
+Any Tekmetric-related settings you need for sync:
+TM_BASE_URL
+TM_SHOP_ID (6212 for JJ Auto)
+TM_AUTH or TM_API_KEY or whatever token mechanism you use now
+
+Any other required env vars referenced in app/sync/* or main.py
+
+Use the Supabase and TM project details you already know from earlier steps. After setting env vars, rebuild/redeploy the service if needed.
+
+Wire sync jobs to run automatically
+We should not have to call curl manually. Set up an automated sync pipeline using Railway:
+
+Either:
+a) Configure a Railway cron job or scheduled job that hits the HTTP endpoints like:
+/api/sync/employees?shop_id=6212 (maybe daily)
+/api/sync/repair-orders?days_back=1&board=POSTED (every 5–10 minutes)
+OR
+b) Create a small background worker or scheduled task inside the app that triggers the sync functions on an interval.
+
+Pick the cleanest approach with Railway MCP. The goal is:
+
+Employees refreshed daily
+
+Repair orders and line items synced incrementally every few minutes
+
+Verify end-to-end in the hosted environment
+Once deployed and scheduled:
+
+Hit the hosted sync endpoints directly on Railway (not localhost) to confirm they work, for example:
+GET https://<railway-url>/api/sync/repair-orders?days_back=1&board=POSTED
+
+Check Supabase to confirm that repair_orders, jobs, job_parts, job_labor, etc. have real data for JJ Auto
+
+Confirm that sync_log and sync_cursors are being updated in the hosted environment
+
+Append the results and any sample queries to docs/WAREHOUSE_PROGRESS.md
+
+Ops Summary
+At the end of your next reply, include an Ops Summary that clearly states:
+
+The Railway service URL
+
+Which env vars were set
+
+How the sync schedule is configured (what runs, how often, via which mechanism)
+
+How many ROs and related entities were synced in the first hosted run
+
+Any TODOs or concerns
+
+From this point on, assume the system is meant to run as a hosted service on Railway with Supabase as the warehouse. Do not give me local uvicorn or curl instructions; instead, use the MCP tools to manage deployment, env vars, and scheduling for me.

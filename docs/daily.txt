@@ -1,0 +1,62 @@
+Thank you for the thorough audit writeup. This is super helpful and a big step forward.
+
+Now I want you to use this audit as your foundation and shift into a daily, RO-level data auditor.
+
+Here is what I need next:
+
+Turn this audit into hard rules for “potential” vs “authorized” metrics.
+
+Based on your findings, formalize a clear rule set in your own words:
+
+Potential revenue / profit = all jobs returned by /estimate (authorized plus not authorized).
+Authorized or committed revenue / profit = only jobs where job.authorized is true, matched to /profit/labor behavior.
+
+Write down exactly which endpoint and which fields are the source of truth for each of these concepts for revenue, profit, labor, parts, taxes, fees, and discounts. Treat this as a contract the backend must follow. Make it impossible to accidentally mix “all jobs” and “authorized only” in the same metric without calling that out.
+
+Build a daily RO audit view starting from today.
+
+Use your existing audit endpoints like /api/audit/daily, /api/audit/ro/{ro_id}, and /api/audit/date-range as needed, but I want you to think in terms of a front-end view and the data shape it needs.
+
+Design a “Today’s ROs” audit view that:
+
+– Defaults to today’s date automatically.
+– Lists every RO for today with the following for each RO:
+RO number, status, advisor, authorizedTotal, full estimate total, profit/labor totals, and your own recalculated totals from estimate.jobs.
+– For each RO, clearly separate:
+Potential totals (all jobs)
+Authorized totals (job.authorized = true)
+– Flags any RO where there are discrepancies between:
+estimate totals vs recalculated line items
+profit/labor totals vs authorized subset of estimate jobs
+job-board or other summary endpoints vs the detailed view
+
+Use today as the primary sandbox, then allow moving backwards one day at a time. The goal is that we can pull up “today” and immediately see which ROs are clean and which ones still have weird or wrong data, based on your endpoint trust matrix and discrepancy categories.
+
+Hunt for the remaining wrong data.
+
+Even though the math checks out and many discrepancies are explained by authorization behavior, there are still places in the live dashboards where we are seeing wrong or confusing numbers.
+
+Using the daily RO audit view you design:
+
+– Identify any patterns where the dashboards would still show misleading values, especially when:
+Some jobs are unauthorized but included in totals.
+Tax or subtotal fields are null and we are comparing the wrong numbers.
+ROs are WIP or 404 on /repair-order but still present elsewhere.
+– For each type of issue, propose exactly how the dashboard should pull and display those numbers so they are always consistent with your audit.
+– If the existing /api/audit endpoints are not rich enough to drive this daily RO view, propose minimal changes or new helper endpoints, but do not change your core logic about authorized vs all jobs.
+
+Connect this daily audit to the live dashboard.
+
+Finally, explain how the daily RO audit view becomes the backbone for the owner dashboard.
+
+I want you to describe:
+
+– The exact data shape that the “today view” of the dashboard should request.
+– How the dashboard will always use the same rules you defined for potential vs authorized metrics.
+– How clicking on a day or metric in the dashboard can drill down into this daily RO audit list and show the per-RO details that explain the totals.
+
+In your next response, do the following:
+
+First, restate in your own words the key authorization behavior you discovered and what “potential” vs “authorized” really mean in this system.
+Then, design the daily RO audit starting on today’s date, including which endpoints to call, how to build the per-RO records, and how to flag issues.
+Finally, explain how this audit view will be used to fix the remaining wrong data and keep the live dashboard always aligned with the audited, correct numbers.

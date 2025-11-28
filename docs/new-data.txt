@@ -1,0 +1,15 @@
+Thank you, this is heading in the right direction and the audit work has been really solid so far.
+
+Now I want you to shift into data modeling and storage design, but before you write any code or change any files, you must sketch out the full plan for review.
+
+Use the real context from our repo. Read and absorb everything under /dev related to Tekmetric, the audit endpoints, dashboard logic, and existing data shapes. With that in mind, design a Supabase schema that can hold everything we care about long term: customers, vehicles, repair orders, jobs, parts, labor, fees, taxes, discounts, and any support tables you think we need. The entire design must be multi-shop from day one, which means every entity ultimately rolls up under a shop_id at the top so adding new locations later does not require a redesign.
+
+The goal is for Supabase to become our fast local warehouse for dashboards, trend analysis, and audits, while Tekmetric stays the upstream source of truth we sync from. The live dashboard should eventually read from Supabase tables, not directly from Tekmetric for every view. Tekmetric endpoints should mainly be used for initial backfill and ongoing incremental updates.
+
+In your next response you must not start implementing anything. Do not write migrations, code, or scripts yet. Instead, I want you to sketch out the plan in detail so it can be reviewed and adjusted before you “pull the trigger.”
+
+That plan should describe the core tables you propose in Supabase, including how you want to model customers, vehicles, repair orders, jobs, parts, labor, fees, taxes, and discounts, and how they will relate to each other with shop_id as the root. It should explain how this schema maps to the Tekmetric endpoints and fields you just audited and which fields you consider required vs optional. It should also describe how you want to do an initial backfill from Tekmetric into Supabase, and then how to switch into an incremental sync mode where we only pull new or changed data instead of reloading everything every time. Include which endpoints you would rely on to detect new or updated repair orders and how you would avoid duplicate writes.
+
+Finally, describe how the dashboard would change once this Supabase layer exists: which current views should be backed by Supabase queries instead of live TM calls, how filters would translate into SQL style queries, and how you would keep all of this aligned with the true GP and authorization rules you have already defined. You can also propose background jobs or scheduled tasks for syncing and validation, but just as part of the plan, not as code yet.
+
+Your next reply should be a clear written plan only, based on what you learn from /dev. After that plan is reviewed and approved, we will have you implement it.

@@ -1,0 +1,59 @@
+Start the next phase and implement the actual sync service now, using the approved Supabase-warehouse-spec.md and the schema you just deployed.
+
+Focus first on repair orders and all their child entities. The initial priority order should be:
+
+employees (minimal, just enough to resolve technician IDs and advisors)
+
+customers
+
+vehicles
+
+repair_orders
+
+jobs
+
+job_parts, job_labor, job_sublets, job_fees
+
+Use the rules we already agreed on:
+– If Tekmetric returns a field, map it into Supabase; if it doesn’t, store NULL; all columns that TM sometimes populates must be nullable.
+– Use internal UUID ids as primary keys and tm_id with UNIQUE(shop_id, tm_id) for upserts.
+– Use the authorized vs potential behavior exactly as in the audit and warehouse spec.
+
+Concrete tasks for this phase:
+
+Implement sync modules for each entity.
+Create a clean sync layer in the FastAPI backend, with functions like:
+sync_employees(shop_id)
+sync_customers(shop_id)
+sync_vehicles(shop_id)
+sync_repair_orders(shop_id)
+
+The repair_orders sync must:
+– Use job-board or equivalent TM listing endpoints to discover ROs for a given shop
+– For each RO, call /repair-order/{id}/estimate to build out customers, vehicles, repair_orders, jobs, parts, labor, sublets, and fees
+– For each RO, call /repair-order/{id}/profit/labor to populate the authorized_* revenue/cost/profit fields correctly
+– Write or update rows in Supabase using upserts keyed by (shop_id, tm_id) as defined in the spec
+
+Use sync_cursors and sync_log.
+All sync operations must use the sync_cursors table to track last_tm_updated and/or last_tm_id per entity_type so we can run incremental sync every few minutes without re-pulling everything.
+Every time a sync runs, write a row into sync_log with counts of fetched/created/updated/skipped, status, and error details if any.
+Also populate tm_raw_payloads for a small subset or during the first runs so we can debug TM responses.
+
+Start with a small, safe backfill.
+Do not immediately sync everything. Start with:
+– shop_id for JJ Auto (the one you already created)
+– a very short date range (for example the last 2–3 days of ROs)
+Implement a FastAPI route or CLI entry point like /sync/repair-orders?days_back=3 that triggers this initial backfill.
+After the first run, query Supabase and verify:
+– number of repair_orders rows created
+– number of jobs, job_parts, job_labor rows attached
+– that authorized_* fields and potential_* fields look reasonable for a few sample ROs
+
+Keep breadcrumbs and Ops Summary.
+As you implement this:
+– Write all new code under a clear module path (for example app/sync or app/services/sync)
+– Update docs/WAREHOUSE_PROGRESS.md with what you implemented, the endpoints you use, and any assumptions
+– Commit to main with a clear message
+– At the end of your reply, include an Ops Summary that tells me what you built, which files you touched, what migrations (if any) ran, and what data you synced (e.g., “synced 12 ROs for the last 2 days for JJ Auto”)
+
+Start with employees, customers, vehicles, and repair_orders, then wire in jobs and line items once the core repair_order sync is working. The goal for this phase is to have a working end-to-end path where calling the sync for a small date window results in real rows in Supabase that match Tekmetric for a handful of recent ROs.
