@@ -269,7 +269,7 @@ async def send_alert(
 async def _send_initial_data(websocket: WebSocket):
     """Send initial dashboard data when client connects."""
     try:
-        client = await get_tm_client()
+        client = get_tm_client()  # Not async - returns client instance directly
         today = date.today().isoformat()
 
         # Get today's ROs
@@ -330,7 +330,7 @@ async def _broadcast_dashboard_update():
     manager = get_ws_manager()
 
     try:
-        client = await get_tm_client()
+        client = get_tm_client()  # Not async - returns client instance directly
         today = date.today().isoformat()
 
         # Get today's ROs

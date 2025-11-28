@@ -6,7 +6,7 @@ Handles upserts, sync cursor management, and logging.
 """
 
 import os
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List, Tuple, Union
 from datetime import datetime, timezone
 from supabase import create_client, Client
 import json
@@ -310,6 +310,19 @@ class WarehouseClient:
 
         return result.data[0]["id"], is_new
 
+    def _extract_nested_field(self, data: Any, name_key: str = "name", id_key: str = "id") -> Tuple[Optional[str], Optional[int]]:
+        """
+        Extract name and id from a field that may be a string, dict, or None.
+        TM API sometimes returns {"name": "Honda", "id": 1} and sometimes just "Honda".
+        """
+        if data is None:
+            return None, None
+        if isinstance(data, str):
+            return data, None
+        if isinstance(data, dict):
+            return data.get(name_key), data.get(id_key)
+        return str(data), None
+
     async def upsert_vehicle(
         self,
         shop_uuid: str,
@@ -317,20 +330,26 @@ class WarehouseClient:
         customer_uuid: Optional[str] = None
     ) -> Tuple[str, bool]:
         """Upsert vehicle record. Returns (uuid, is_new)."""
+        # Extract make/model/engine - TM API can return string or object
+        make_name, make_id = self._extract_nested_field(tm_data.get("make"))
+        model_name, model_id = self._extract_nested_field(tm_data.get("model"))
+        sub_model_name, sub_model_id = self._extract_nested_field(tm_data.get("subModel"))
+        engine_name, engine_id = self._extract_nested_field(tm_data.get("engine"))
+
         data = {
             "shop_id": shop_uuid,
             "tm_id": tm_data["id"],
             "customer_id": customer_uuid,
             "tm_customer_id": tm_data.get("customerId"),
             "year": tm_data.get("year"),
-            "make": tm_data.get("make", {}).get("name") if tm_data.get("make") else None,
-            "make_id": tm_data.get("make", {}).get("id") if tm_data.get("make") else None,
-            "model": tm_data.get("model", {}).get("name") if tm_data.get("model") else None,
-            "model_id": tm_data.get("model", {}).get("id") if tm_data.get("model") else None,
-            "sub_model": tm_data.get("subModel", {}).get("name") if tm_data.get("subModel") else None,
-            "sub_model_id": tm_data.get("subModel", {}).get("id") if tm_data.get("subModel") else None,
-            "engine": tm_data.get("engine", {}).get("name") if tm_data.get("engine") else None,
-            "engine_id": tm_data.get("engine", {}).get("id") if tm_data.get("engine") else None,
+            "make": make_name,
+            "make_id": make_id,
+            "model": model_name,
+            "model_id": model_id,
+            "sub_model": sub_model_name,
+            "sub_model_id": sub_model_id,
+            "engine": engine_name,
+            "engine_id": engine_id,
             "transmission": tm_data.get("transmission"),
             "drive_type": tm_data.get("driveType"),
             "body_style": tm_data.get("bodyStyle"),
@@ -551,9 +570,10 @@ class WarehouseClient:
             "job_category_id": tm_data.get("jobCategory", {}).get("id") if tm_data.get("jobCategory") else None,
             "job_category_name": tm_data.get("jobCategory", {}).get("name") if tm_data.get("jobCategory") else None,
             "canned_job_id": tm_data.get("cannedJobId"),
-            "authorized": tm_data.get("authorized", False),
+            # Handle explicit None values - TM API may return null for these booleans
+            "authorized": bool(tm_data.get("authorized")) if tm_data.get("authorized") is not None else False,
             "authorized_date": tm_data.get("authorizedDate"),
-            "declined": tm_data.get("declined", False),
+            "declined": bool(tm_data.get("declined")) if tm_data.get("declined") is not None else False,
             "total": tm_data.get("total", 0) or 0,
             "subtotal": tm_data.get("subTotal"),
             "discount": tm_data.get("discount", 0) or 0,
@@ -625,7 +645,8 @@ class WarehouseClient:
             "last_synced_at": datetime.now(timezone.utc).isoformat(),
         }
 
-        # Parts may not have TM ID, use composite check
+        # Parts may not have TM ID - use explicit insert/update logic
+        # (partial unique index doesn't work with ON CONFLICT column syntax)
         if tm_data.get("id"):
             existing = self.supabase.table("job_parts") \
                 .select("id") \
@@ -633,11 +654,21 @@ class WarehouseClient:
                 .eq("tm_id", tm_data["id"]) \
                 .limit(1) \
                 .execute()
-            is_new = len(existing.data) == 0
 
-            result = self.supabase.table("job_parts") \
-                .upsert(data, on_conflict="shop_id,tm_id") \
-                .execute()
+            if existing.data and len(existing.data) > 0:
+                # Update existing record
+                is_new = False
+                existing_id = existing.data[0]["id"]
+                result = self.supabase.table("job_parts") \
+                    .update(data) \
+                    .eq("id", existing_id) \
+                    .execute()
+            else:
+                # Insert new record
+                is_new = True
+                result = self.supabase.table("job_parts") \
+                    .insert(data) \
+                    .execute()
         else:
             # No TM ID, just insert
             is_new = True
@@ -696,7 +727,8 @@ class WarehouseClient:
             else:
                 data["rate_source"] = "default"
 
-        # Labor may not have TM ID
+        # Labor may not have TM ID - use explicit insert/update logic
+        # (partial unique index doesn't work with ON CONFLICT column syntax)
         if tm_data.get("id"):
             existing = self.supabase.table("job_labor") \
                 .select("id") \
@@ -704,11 +736,21 @@ class WarehouseClient:
                 .eq("tm_id", tm_data["id"]) \
                 .limit(1) \
                 .execute()
-            is_new = len(existing.data) == 0
 
-            result = self.supabase.table("job_labor") \
-                .upsert(data, on_conflict="shop_id,tm_id") \
-                .execute()
+            if existing.data and len(existing.data) > 0:
+                # Update existing record
+                is_new = False
+                existing_id = existing.data[0]["id"]
+                result = self.supabase.table("job_labor") \
+                    .update(data) \
+                    .eq("id", existing_id) \
+                    .execute()
+            else:
+                # Insert new record
+                is_new = True
+                result = self.supabase.table("job_labor") \
+                    .insert(data) \
+                    .execute()
         else:
             is_new = True
             result = self.supabase.table("job_labor") \
@@ -746,6 +788,8 @@ class WarehouseClient:
             "last_synced_at": datetime.now(timezone.utc).isoformat(),
         }
 
+        # Sublets may not have TM ID - use explicit insert/update logic
+        # (partial unique index doesn't work with ON CONFLICT column syntax)
         if tm_data.get("id"):
             existing = self.supabase.table("job_sublets") \
                 .select("id") \
@@ -753,11 +797,21 @@ class WarehouseClient:
                 .eq("tm_id", tm_data["id"]) \
                 .limit(1) \
                 .execute()
-            is_new = len(existing.data) == 0
 
-            result = self.supabase.table("job_sublets") \
-                .upsert(data, on_conflict="shop_id,tm_id") \
-                .execute()
+            if existing.data and len(existing.data) > 0:
+                # Update existing record
+                is_new = False
+                existing_id = existing.data[0]["id"]
+                result = self.supabase.table("job_sublets") \
+                    .update(data) \
+                    .eq("id", existing_id) \
+                    .execute()
+            else:
+                # Insert new record
+                is_new = True
+                result = self.supabase.table("job_sublets") \
+                    .insert(data) \
+                    .execute()
         else:
             is_new = True
             result = self.supabase.table("job_sublets") \
