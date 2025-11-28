@@ -669,7 +669,7 @@ class WarehouseClient:
             "repair_order_id": ro_uuid,
             "tm_job_id": safe_tm_job_id,
             "tm_repair_order_id": safe_tm_ro_id,
-            "name": tm_data.get("name", tm_data.get("brand", "")),
+            "name": tm_data.get("name") or tm_data.get("brand") or "Unnamed Part",
             "part_number": tm_data.get("partNumber"),
             "description": tm_data.get("description"),
             "quantity": quantity,
