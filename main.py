@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 import os
 import logging
 
-from app.routers import authorization, dashboard, payments, customers, ro_operations, appointments, parts, vcdb, jobs, inspections, employees, inventory, carfax, shop, reports, advanced, fleet, utility, analytics, history, realtime, advisors, trends, audit, sync
+from app.routers import authorization, dashboard, payments, customers, ro_operations, appointments, parts, vcdb, jobs, inspections, employees, inventory, carfax, shop, reports, advanced, fleet, utility, analytics, history, realtime, advisors, trends, audit, sync, kpi_dashboard
 from app.scheduler import start_scheduler, stop_scheduler
 
 logger = logging.getLogger(__name__)
@@ -73,6 +73,7 @@ app.include_router(advisors.router, prefix="/api/advisors", tags=["Advisors (Tie
 app.include_router(trends.router, prefix="/api/trends", tags=["Trends (Tier 7)"])
 app.include_router(audit.router, prefix="/api/audit", tags=["Data Audit"])
 app.include_router(sync.router, prefix="/api/sync", tags=["Warehouse Sync"])
+app.include_router(kpi_dashboard.router, prefix="/api/kpi", tags=["KPI Dashboard (Warehouse)"])
 
 
 @app.get("/")

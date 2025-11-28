@@ -1,8 +1,80 @@
 # Metric Contracts: Source of Truth Definitions
 
-**Version:** 1.0
-**Date:** November 27, 2025
+**Version:** 2.0
+**Date:** November 28, 2025
 **Status:** ACTIVE - All dashboard code must follow these rules
+
+---
+
+## Warehouse-Backed Metrics (Dashboard Source of Truth)
+
+**The new dashboard reads EXCLUSIVELY from these warehouse tables:**
+
+- `daily_shop_metrics` - Aggregated daily KPIs
+- `ro_snapshots` - Individual RO point-in-time records
+
+**Data Flow:**
+```
+TM API → repair_orders → ro_snapshots → daily_shop_metrics → Dashboard
+```
+
+### daily_shop_metrics Fields
+
+| Field | Definition | Unit |
+|-------|------------|------|
+| `ro_count` | Total ROs for the day (snapshot count) | count |
+| `authorized_revenue` | SUM of authorized_revenue from ro_snapshots | cents |
+| `authorized_cost` | SUM of authorized_cost from ro_snapshots | cents |
+| `authorized_profit` | SUM of authorized_profit from ro_snapshots | cents |
+| `authorized_gp_percent` | (authorized_profit / authorized_revenue) * 100 | % |
+| `authorized_job_count` | SUM of authorized job counts | count |
+| `parts_revenue` | SUM of parts_revenue from authorized jobs | cents |
+| `parts_cost` | SUM of parts_cost from authorized jobs | cents |
+| `parts_profit` | parts_revenue - parts_cost | cents |
+| `labor_revenue` | SUM of labor_revenue from authorized jobs | cents |
+| `labor_cost` | SUM of labor_cost from authorized jobs | cents |
+| `labor_profit` | labor_revenue - labor_cost | cents |
+| `labor_hours` | SUM of billed hours from authorized jobs | decimal |
+| `sublet_revenue` | SUM of sublet retail from authorized jobs | cents |
+| `sublet_cost` | SUM of sublet cost from authorized jobs | cents |
+| `fees_total` | SUM of fees from authorized jobs | cents |
+| `tax_total` | SUM of tax amounts | cents |
+| `avg_ro_value` | authorized_revenue / ro_count | cents |
+| `avg_ro_profit` | authorized_profit / ro_count | cents |
+| `avg_labor_rate` | labor_revenue / labor_hours | cents/hour |
+| `gp_per_labor_hour` | labor_profit / labor_hours | cents/hour |
+| `potential_revenue` | SUM of potential_revenue (all jobs) | cents |
+| `authorization_rate` | (authorized_revenue / potential_revenue) * 100 | % |
+
+### Derived Dashboard KPIs
+
+| KPI | Formula | Notes |
+|-----|---------|-------|
+| **ARO (Avg Repair Order)** | `authorized_revenue / ro_count / 100` | Display as dollars |
+| **Car Count** | `ro_count` | Direct field |
+| **GP Dollars** | `authorized_profit / 100` | Display as dollars |
+| **GP%** | `authorized_gp_percent` | Direct field (already %) |
+| **Billed Hours** | `labor_hours` | Direct field |
+| **Effective Labor Rate** | `avg_labor_rate / 100` | Display as $/hour |
+| **Authorization Rate** | `authorization_rate` | Direct field (already %) |
+| **Parts GP%** | `(parts_profit / parts_revenue) * 100` | Calculated |
+| **Labor GP%** | `(labor_profit / labor_revenue) * 100` | Calculated |
+
+### Period Aggregation
+
+For date ranges (MTD, last 30 days, etc.):
+```sql
+SELECT
+    SUM(ro_count) as car_count,
+    SUM(authorized_revenue) as total_revenue,
+    SUM(authorized_profit) as total_profit,
+    SUM(authorized_profit) * 100.0 / NULLIF(SUM(authorized_revenue), 0) as gp_percent,
+    SUM(authorized_revenue) * 1.0 / NULLIF(SUM(ro_count), 0) as aro,
+    SUM(labor_hours) as total_hours
+FROM daily_shop_metrics
+WHERE shop_id = ?
+  AND metric_date BETWEEN ? AND ?
+```
 
 ---
 
