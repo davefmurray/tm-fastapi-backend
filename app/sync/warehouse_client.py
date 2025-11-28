@@ -649,7 +649,10 @@ class WarehouseClient:
     ) -> Tuple[str, bool]:
         """Upsert job part record."""
         # Convert all integer fields - TM API returns floats like "0.0", DB expects INTEGER
+        # Also convert parameters as caller may pass floats from TM API data
         tm_id = self._to_int(tm_data.get("id"))
+        safe_tm_job_id = self._to_int(tm_job_id)
+        safe_tm_ro_id = self._to_int(tm_ro_id)
         retail = self._to_cents(tm_data.get("retail"))
         cost = self._to_cents(tm_data.get("cost"))
         core_charge = self._to_cents(tm_data.get("coreCharge"))
@@ -661,8 +664,8 @@ class WarehouseClient:
             "tm_id": tm_id,
             "job_id": job_uuid,
             "repair_order_id": ro_uuid,
-            "tm_job_id": tm_job_id,
-            "tm_repair_order_id": tm_ro_id,
+            "tm_job_id": safe_tm_job_id,
+            "tm_repair_order_id": safe_tm_ro_id,
             "name": tm_data.get("name", tm_data.get("brand", "")),
             "part_number": tm_data.get("partNumber"),
             "description": tm_data.get("description"),
@@ -730,7 +733,10 @@ class WarehouseClient:
         tech = tm_data.get("technician", {}) or {}
 
         # Convert all integer fields - TM API may return floats, DB expects INTEGER
+        # Also convert parameters as caller may pass floats from TM API data
         tm_id = self._to_int(tm_data.get("id"))
+        safe_tm_job_id = self._to_int(tm_job_id)
+        safe_tm_ro_id = self._to_int(tm_ro_id)
         tm_technician_id = self._to_int(tech.get("id"))
         rate = self._to_cents(tm_data.get("rate"))
         total = self._to_cents(tm_data.get("total"))
@@ -740,8 +746,8 @@ class WarehouseClient:
             "tm_id": tm_id,
             "job_id": job_uuid,
             "repair_order_id": ro_uuid,
-            "tm_job_id": tm_job_id,
-            "tm_repair_order_id": tm_ro_id,
+            "tm_job_id": safe_tm_job_id,
+            "tm_repair_order_id": safe_tm_ro_id,
             "name": tm_data.get("name", "Labor"),
             "description": tm_data.get("description"),
             "labor_type": tm_data.get("laborType"),
@@ -813,7 +819,10 @@ class WarehouseClient:
     ) -> Tuple[str, bool]:
         """Upsert job sublet record."""
         # Convert all integer fields - TM API may return floats, DB expects INTEGER
+        # Also convert parameters as caller may pass floats from TM API data
         tm_id = self._to_int(tm_data.get("id"))
+        safe_tm_job_id = self._to_int(tm_job_id)
+        safe_tm_ro_id = self._to_int(tm_ro_id)
         vendor_id = self._to_int(tm_data.get("vendorId"))
         cost = self._to_cents(tm_data.get("cost"))
         retail = self._to_cents(tm_data.get("retail"))
@@ -823,8 +832,8 @@ class WarehouseClient:
             "tm_id": tm_id,
             "job_id": job_uuid,
             "repair_order_id": ro_uuid,
-            "tm_job_id": tm_job_id,
-            "tm_repair_order_id": tm_ro_id,
+            "tm_job_id": safe_tm_job_id,
+            "tm_repair_order_id": safe_tm_ro_id,
             "name": tm_data.get("name", "Sublet"),
             "description": tm_data.get("description"),
             "vendor_id": vendor_id,
@@ -879,6 +888,13 @@ class WarehouseClient:
         tm_data: Dict
     ) -> Tuple[str, bool]:
         """Upsert job fee record."""
+        # Convert integer fields - TM API may return floats, DB expects INTEGER
+        safe_tm_job_id = self._to_int(tm_job_id)
+        safe_tm_ro_id = self._to_int(tm_ro_id)
+        amount = self._to_cents(tm_data.get("amount"))
+        cap = self._to_cents(tm_data.get("cap"))
+        total = self._to_cents(tm_data.get("total", 0) or 0)
+
         # Determine fee type
         name = (tm_data.get("name") or "").lower()
         fee_type = "other"
@@ -895,14 +911,14 @@ class WarehouseClient:
             "shop_id": shop_uuid,
             "job_id": job_uuid,
             "repair_order_id": ro_uuid,
-            "tm_job_id": tm_job_id,
-            "tm_repair_order_id": tm_ro_id,
+            "tm_job_id": safe_tm_job_id,
+            "tm_repair_order_id": safe_tm_ro_id,
             "name": tm_data.get("name", "Fee"),
             "fee_type": fee_type,
-            "amount": tm_data.get("amount"),
+            "amount": amount,
             "percentage": tm_data.get("percentage"),
-            "cap": tm_data.get("cap"),
-            "total": tm_data.get("total", 0) or 0,
+            "cap": cap,
+            "total": total,
             "taxable": tm_data.get("taxable", False),
             "tm_extra": {},
             "last_synced_at": datetime.now(timezone.utc).isoformat(),
