@@ -1,0 +1,57 @@
+ KPI Questions for Dashboard Design
+
+  Per sync9.txt, I need your input before designing the dashboard:
+
+  1. Which KPIs matter most to you as the owner?
+
+  Available metrics from our warehouse:
+  - GP% (Gross Profit Margin)
+  - GP Dollars (Total Gross Profit)
+  - ARO (Average Repair Order Value)
+  - Car Count (ROs per day)
+  - Billed Hours (Labor hours sold)
+  - Effective Labor Rate ($/hour)
+  - Revenue (total authorized sales)
+  - Gross Profit $ per billed hour (total sales / total labor hours, per ro and per job)** need to add
+ 
+ Rank your top 5 or tell me which ones to highlight prominently. All the above are important but these are top 5
+  - Revenue (total authorized sales)
+  - Car Count (ROs per day)
+  - GP% (Gross Profit Margin)
+  - GP Dollars (Total Gross Profit)  - Gross Profit $ per billed hour (total sales / total labor hours, per ro and per job) ** need to add
+  - Billed Hours (Labor hours sold)
+
+  ---
+  2. Which date ranges do you want as defaults?
+
+  Pick the primary views:
+  - Today 
+  - WTD (Week to Date, M-F only)
+  - Last 7 Days
+  - MTD (Month to Date)
+  - Last 30 Days
+  - Custom Range
+
+  Which should be the default when the dashboard loads?
+TODAY
+
+  ---
+  3. How many "views" or personas do you need?
+
+  Options:
+  - Owner View - High-level KPIs, trends, all-shop summary
+  - Advisor View - Performance by service advisor
+  - Tech View - Technician productivity (hours, efficiency)
+  - Warranty/No-Charge View - Filter out warranty/internal ROs
+
+  Which views do you actually need? Just owner? Owner + Advisor?
+All would be killer
+
+  ---
+  4. Single-page vs Multi-page?
+
+  - Single-page with sections - All KPIs on one scrollable page with collapsible sections
+  - Multi-page tabs - Separate pages for Summary, Advisors, Techs, Trends
+
+  What's your preference?
+Multipage

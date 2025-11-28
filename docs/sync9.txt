@@ -1,0 +1,65 @@
+Data layer looks great now. 514 ROs, 4,364 jobs, 5,387 parts, 4,464 labor, and solid daily metrics. From this point on, treat the warehouse and sync pipeline as “stable enough” and focus on building a modern, beautiful, fast KPI dashboard on top of daily_shop_metrics and ro_snapshots.
+
+Important: do NOT reuse or touch the old “moneyball” dashboard project. That project is deprecated. We are starting a new dashboard.
+
+Lock in metric contracts
+
+First, summarize the current metric definitions you are using for:
+
+authorized_revenue
+
+authorized_profit
+
+authorized_gp_percent
+
+ARO
+
+car_count
+
+labor_hours
+
+authorization_rate
+Write or update METRIC_CONTRACTS.md so it clearly reflects the actual implementation backed by daily_shop_metrics and ro_snapshots. This is our contract for the new dashboard.
+
+Ask me focused KPI questions before UI design
+
+Before you design any frontend, you must ask me a short, focused set of questions in your next reply. Do NOT skip this. Ask specifically:
+
+Which KPIs are most important to me as the owner (GP%, GP dollars, ARO, car count, billed hours, effective labor rate, authorization rate, etc.)
+
+Which date ranges I care about by default (today, yesterday, MTD, last 7 days, last 30 days)
+
+How many “views” I want (Owner view, Advisor view, Tech view, Warranty/No-Charge view, etc.)
+
+Whether I prefer a single-page dashboard with collapsible sections or multiple dedicated pages
+
+Wait for my answers to those questions, then design around them.
+
+Backend dashboard endpoints
+
+Once KPIs are agreed on, design and implement clean read-only API endpoints for the new dashboard, for example:
+
+GET /api/dashboard/summary?shop_id=6212&start_date=&end_date=
+
+GET /api/dashboard/daily?shop_id=6212&start_date=&end_date=
+
+GET /api/dashboard/advisors?shop_id=6212&start_date=&end_date=
+
+GET /api/dashboard/techs?shop_id=6212&start_date=&end_date=
+All of these must read exclusively from daily_shop_metrics, ro_snapshots, and related warehouse tables. No direct Tekmetric calls in dashboard endpoints.
+
+New frontend project
+
+After the KPI questions are answered and API endpoints are defined, create a new frontend project in the repo (you can propose the tech stack: React/Vue/etc.) whose only job is to:
+
+hit the new /api/dashboard/* endpoints
+
+render a modern, fast, clean UI
+
+show the agreed KPIs and charts with filters for date range and shop
+
+In your next reply, do NOT start coding the frontend yet. Instead:
+
+Confirm METRIC_CONTRACTS.md reflects the current daily_shop_metrics and ro_snapshots logic.
+
+Ask me the KPI and layout questions listed above so we can collaboratively define exactly what this new dashboard should show.

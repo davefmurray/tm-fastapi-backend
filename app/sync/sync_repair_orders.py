@@ -540,29 +540,48 @@ async def _sync_single_ro(
         "fees": 0
     }
 
+    # Extract IDs - TM API returns flat IDs from job-board but nested objects from individual RO endpoint
+    # Handle both: customerId (flat) or customer.id (nested)
+    customer_tm_id = ro_data.get("customerId")
+    if not customer_tm_id and ro_data.get("customer"):
+        customer_tm_id = ro_data["customer"].get("id")
+
+    vehicle_tm_id = ro_data.get("vehicleId")
+    if not vehicle_tm_id and ro_data.get("vehicle"):
+        vehicle_tm_id = ro_data["vehicle"].get("id")
+
+    advisor_tm_id = ro_data.get("serviceWriterId")
+    if not advisor_tm_id and ro_data.get("serviceWriter"):
+        advisor_tm_id = ro_data["serviceWriter"].get("id")
+
+    # Normalize ro_data to have flat IDs for upsert_repair_order
+    ro_data["customerId"] = customer_tm_id
+    ro_data["vehicleId"] = vehicle_tm_id
+    ro_data["serviceWriterId"] = advisor_tm_id
+
     # 1. Resolve customer
     customer_uuid = None
-    if ro_data.get("customerId"):
+    if customer_tm_id:
         customer_uuid = await sync.warehouse.get_entity_uuid(
-            "customers", shop_uuid, ro_data["customerId"]
+            "customers", shop_uuid, customer_tm_id
         )
         if not customer_uuid:
-            customer_uuid = await sync_customer_by_id(sync, ro_data["customerId"])
+            customer_uuid = await sync_customer_by_id(sync, customer_tm_id)
 
     # 2. Resolve vehicle
     vehicle_uuid = None
-    if ro_data.get("vehicleId"):
+    if vehicle_tm_id:
         vehicle_uuid = await sync.warehouse.get_entity_uuid(
-            "vehicles", shop_uuid, ro_data["vehicleId"]
+            "vehicles", shop_uuid, vehicle_tm_id
         )
         if not vehicle_uuid:
-            vehicle_uuid = await sync_vehicle_by_id(sync, ro_data["vehicleId"], customer_uuid)
+            vehicle_uuid = await sync_vehicle_by_id(sync, vehicle_tm_id, customer_uuid)
 
     # 3. Resolve advisor
     advisor_uuid = None
-    if ro_data.get("serviceWriterId"):
+    if advisor_tm_id:
         advisor_uuid = await sync.warehouse.get_entity_uuid(
-            "employees", shop_uuid, ro_data["serviceWriterId"]
+            "employees", shop_uuid, advisor_tm_id
         )
 
     # 4. Fetch full estimate data
