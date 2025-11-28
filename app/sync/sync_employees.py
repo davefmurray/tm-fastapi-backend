@@ -40,8 +40,8 @@ async def sync_employees(
         )
 
         # Fetch employees from TM
-        # TM endpoint: GET /api/shop/{shopId}/employee
-        employees = await sync.tm.get(f"/api/shop/{tm_shop_id}/employee")
+        # TM endpoint: GET /api/shop/{shopId}/employees (plural!)
+        employees = await sync.tm.get(f"/api/shop/{tm_shop_id}/employees")
 
         if not isinstance(employees, list):
             employees = employees.get("content", []) if isinstance(employees, dict) else []
@@ -50,7 +50,7 @@ async def sync_employees(
 
         # Store raw payload if debugging
         await sync.store_payload(
-            endpoint=f"/api/shop/{tm_shop_id}/employee",
+            endpoint=f"/api/shop/{tm_shop_id}/employees",
             response={"employees": employees[:5]} if len(employees) > 5 else {"employees": employees}
         )
 
