@@ -163,7 +163,14 @@ async def _discover_ros(
     all_ros = []
     seen_ro_ids = set()  # Dedupe across boards
 
-    boards_to_fetch = ["ACTIVE", "POSTED"] if board == "ALL" else [board]
+    # Three boards in TM:
+    # - ACTIVE: ESTIMATE, WORKINPROGRESS, COMPLETE (recent WIP)
+    # - POSTED: POSTED, ACCRECV (invoiced)
+    # - COMPLETE: historically completed ROs
+    if board == "ALL":
+        boards_to_fetch = ["ACTIVE", "POSTED", "COMPLETE"]
+    else:
+        boards_to_fetch = [board]
 
     for b in boards_to_fetch:
         page = 0
@@ -198,8 +205,14 @@ async def _discover_ros(
 
             # Choose date field based on board type
             # POSTED board = historical invoices, filter by postedDate
+            # COMPLETE board = historically completed, filter by completedDate
             # ACTIVE board = WIP, filter by updatedDate
-            date_field = "postedDate" if b == "POSTED" else "updatedDate"
+            if b == "POSTED":
+                date_field = "postedDate"
+            elif b == "COMPLETE":
+                date_field = "completedDate"
+            else:
+                date_field = "updatedDate"
 
             # Filter by appropriate date field
             for ro in board_ros:
