@@ -431,3 +431,52 @@ async def debug_job_board(
         error_trace = traceback.format_exc()
         logger.error(f"Debug job-board error: {e}\n{error_trace}")
         raise HTTPException(status_code=500, detail=f"Debug error: {str(e)}")
+
+
+@router.get("/debug/dashboard-aggregate")
+async def debug_dashboard_aggregate(
+    shop_id: int = Query(default=DEFAULT_SHOP_ID, description="TM Shop ID"),
+    days_back: int = Query(default=30, ge=1, le=365, description="Days back")
+):
+    """
+    DEBUG: Check TM dashboard aggregate to see reported car count for date range.
+    This helps verify how many ROs TM says exist vs what job-board returns.
+    """
+    from app.sync.sync_base import SyncBase
+    from datetime import datetime, timedelta
+
+    sync = SyncBase()
+
+    try:
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days_back)
+
+        # Format dates as TM expects
+        start_str = start_date.strftime("%Y-%m-%dT00:00:00.000-05:00")
+        end_str = end_date.strftime("%Y-%m-%dT23:59:59.999-05:00")
+
+        # Query TM dashboard for POSTED board aggregate
+        result = await sync.tm.get(
+            "/api/reporting/shop-dashboard/aggregate/summary",
+            params={
+                "viewType": "JOBBOARDPOSTED",
+                "metric": "SALES",
+                "shopIds": str(shop_id),
+                "start": start_str,
+                "end": end_str,
+                "timezone": "America/New_York",
+                "useCustomRoLabel": "true"
+            }
+        )
+
+        return {
+            "shop_id": shop_id,
+            "days_back": days_back,
+            "date_range": f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}",
+            "tm_dashboard_response": result
+        }
+
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(f"Debug dashboard error: {e}\n{error_trace}")
+        raise HTTPException(status_code=500, detail=f"Debug error: {str(e)}")
