@@ -657,7 +657,10 @@ class WarehouseClient:
         cost = self._to_cents(tm_data.get("cost"))
         core_charge = self._to_cents(tm_data.get("coreCharge"))
         vendor_id = self._to_int(tm_data.get("vendorId"))
-        quantity = tm_data.get("quantity", 1) or 1
+        # quantity can also be a float like 1.0, 2.0 - convert to int
+        quantity = self._to_int(tm_data.get("quantity"), default=1)
+        # Calculate total as int (retail is already int, quantity now int)
+        total = retail * quantity if retail else 0
 
         data = {
             "shop_id": shop_uuid,
@@ -673,7 +676,7 @@ class WarehouseClient:
             "retail": retail,
             "cost": cost,
             "core_charge": core_charge,
-            "total": retail * quantity,
+            "total": total,
             "vendor_id": vendor_id,
             "vendor_name": tm_data.get("vendorName"),
             "manufacturer": tm_data.get("brand"),
