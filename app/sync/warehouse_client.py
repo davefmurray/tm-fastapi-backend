@@ -215,7 +215,10 @@ class WarehouseClient:
             "role": tm_data.get("employeeRole", {}).get("code") if tm_data.get("employeeRole") else None,
             "role_name": tm_data.get("employeeRole", {}).get("name") if tm_data.get("employeeRole") else None,
             "hourly_rate": tm_data.get("hourlyRate"),  # Already in cents from TM
-            "status": "ACTIVE" if tm_data.get("active", True) else "INACTIVE",
+            "salary": tm_data.get("salary"),  # Annual salary in cents
+            "pay_type": tm_data.get("employeePayType", {}).get("code") if tm_data.get("employeePayType") else None,
+            "can_perform_work": tm_data.get("canPerformWork"),  # True if technician
+            "status": "INACTIVE" if tm_data.get("disabled") or tm_data.get("deactivated") else "ACTIVE",
             "username": tm_data.get("username"),
             "phone": tm_data.get("phone"),
             "can_clock_in": tm_data.get("canClockIn"),
@@ -223,8 +226,12 @@ class WarehouseClient:
             "can_tech": tm_data.get("canTech"),
             "tm_extra": {k: v for k, v in tm_data.items() if k not in [
                 "id", "firstName", "lastName", "email", "employeeRole",
-                "hourlyRate", "active", "username", "phone", "canClockIn",
-                "canSell", "canTech"
+                "hourlyRate", "salary", "employeePayType", "canPerformWork",
+                "disabled", "deactivated", "active", "username", "phone",
+                "canClockIn", "canSell", "canTech", "account", "shop",
+                "address", "permissions", "fullName", "certificationNumber",
+                "accessRestricted", "commissionSetting", "createdDate", "updatedDate",
+                "createdUser", "updatedUser"
             ]},
             "last_synced_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
