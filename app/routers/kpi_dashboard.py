@@ -595,17 +595,28 @@ async def get_sold_summary(
     start, end = resolve_date_range(range_type, start_date, end_date)
 
     # Query jobs table for authorized jobs in date range
-    result = supabase.table("jobs").select(
-        "id, repair_order_id, name, authorized_date, "
-        "parts_total, labor_total, sublet_total, fees_total, "
-        "labor_hours, gross_profit_amount, gross_profit_percent"
-    ).eq("shop_id", shop_uuid).eq("authorized", True).gte(
-        "authorized_date", f"{start}T00:00:00Z"
-    ).lte(
-        "authorized_date", f"{end}T23:59:59Z"
-    ).limit(10000).execute()
+    # Use pagination to get all results (Supabase limits to 1000 per request)
+    jobs = []
+    page_size = 1000
+    offset = 0
 
-    jobs = result.data or []
+    while True:
+        result = supabase.table("jobs").select(
+            "id, repair_order_id, name, authorized_date, "
+            "parts_total, labor_total, sublet_total, fees_total, "
+            "labor_hours, gross_profit_amount, gross_profit_percent"
+        ).eq("shop_id", shop_uuid).eq("authorized", True).gte(
+            "authorized_date", f"{start}T00:00:00Z"
+        ).lte(
+            "authorized_date", f"{end}T23:59:59Z"
+        ).range(offset, offset + page_size - 1).execute()
+
+        batch = result.data or []
+        jobs.extend(batch)
+
+        if len(batch) < page_size:
+            break
+        offset += page_size
 
     if not jobs:
         return {
@@ -691,16 +702,27 @@ async def get_sold_daily(
 
     start, end = resolve_date_range(range_type, start_date, end_date)
 
-    result = supabase.table("jobs").select(
-        "authorized_date, parts_total, labor_total, sublet_total, "
-        "labor_hours, gross_profit_amount, repair_order_id"
-    ).eq("shop_id", shop_uuid).eq("authorized", True).gte(
-        "authorized_date", f"{start}T00:00:00Z"
-    ).lte(
-        "authorized_date", f"{end}T23:59:59Z"
-    ).limit(10000).execute()
+    # Paginate to get all jobs (Supabase limits to 1000 per request)
+    jobs = []
+    page_size = 1000
+    offset = 0
 
-    jobs = result.data or []
+    while True:
+        result = supabase.table("jobs").select(
+            "authorized_date, parts_total, labor_total, sublet_total, "
+            "labor_hours, gross_profit_amount, repair_order_id"
+        ).eq("shop_id", shop_uuid).eq("authorized", True).gte(
+            "authorized_date", f"{start}T00:00:00Z"
+        ).lte(
+            "authorized_date", f"{end}T23:59:59Z"
+        ).range(offset, offset + page_size - 1).execute()
+
+        batch = result.data or []
+        jobs.extend(batch)
+
+        if len(batch) < page_size:
+            break
+        offset += page_size
 
     # Group by date
     daily_data: Dict[str, Dict] = {}
@@ -770,15 +792,26 @@ async def get_sold_vs_posted(
     start, end = resolve_date_range(range_type, start_date, end_date)
 
     # Get SOLD (from jobs by authorized_date)
-    sold_result = supabase.table("jobs").select(
-        "parts_total, labor_total, sublet_total, gross_profit_amount, repair_order_id"
-    ).eq("shop_id", shop_uuid).eq("authorized", True).gte(
-        "authorized_date", f"{start}T00:00:00Z"
-    ).lte(
-        "authorized_date", f"{end}T23:59:59Z"
-    ).limit(10000).execute()
+    # Paginate to get all jobs (Supabase limits to 1000 per request)
+    sold_jobs = []
+    page_size = 1000
+    offset = 0
 
-    sold_jobs = sold_result.data or []
+    while True:
+        sold_result = supabase.table("jobs").select(
+            "parts_total, labor_total, sublet_total, gross_profit_amount, repair_order_id"
+        ).eq("shop_id", shop_uuid).eq("authorized", True).gte(
+            "authorized_date", f"{start}T00:00:00Z"
+        ).lte(
+            "authorized_date", f"{end}T23:59:59Z"
+        ).range(offset, offset + page_size - 1).execute()
+
+        batch = sold_result.data or []
+        sold_jobs.extend(batch)
+
+        if len(batch) < page_size:
+            break
+        offset += page_size
     sold_revenue = sum(
         (j.get("parts_total") or 0) + (j.get("labor_total") or 0) + (j.get("sublet_total") or 0)
         for j in sold_jobs
