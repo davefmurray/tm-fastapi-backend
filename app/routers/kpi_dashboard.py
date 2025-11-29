@@ -565,3 +565,265 @@ async def get_warranty_view(
         "filtered_ros": ro_count,
         "excluded_ros": len(rows) - ro_count
     }
+# Sold endpoints to append to kpi_dashboard.py
+
+
+@router.get("/sold")
+async def get_sold_summary(
+    shop_id: int = Query(default=6212, description="TM Shop ID"),
+    range_type: DateRange = Query(default=DateRange.TODAY, description="Date range preset"),
+    start_date: Optional[str] = Query(default=None, description="Custom start (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(default=None, description="Custom end (YYYY-MM-DD)")
+):
+    """
+    SOLD (Authorized) Revenue - What was SOLD in the period.
+
+    This is different from POSTED revenue:
+    - SOLD = when customer approved the work (job.authorized_date)
+    - POSTED = when RO was closed/invoiced (ro.posted_date)
+
+    Revenue = parts + labor + sublet (excludes tax and fees).
+
+    Use this for:
+    - Sales performance tracking
+    - Advisor sales metrics
+    - Leading indicator of future production
+    """
+    supabase = get_supabase()
+    shop_uuid = get_shop_uuid(supabase, shop_id)
+
+    start, end = resolve_date_range(range_type, start_date, end_date)
+
+    # Query jobs table for authorized jobs in date range
+    result = supabase.table("jobs").select(
+        "id, repair_order_id, name, authorized_date, "
+        "parts_total, labor_total, sublet_total, fees_total, "
+        "labor_hours, gross_profit_amount, gross_profit_percent"
+    ).eq("shop_id", shop_uuid).eq("authorized", True).gte(
+        "authorized_date", f"{start}T00:00:00Z"
+    ).lte(
+        "authorized_date", f"{end}T23:59:59Z"
+    ).execute()
+
+    jobs = result.data or []
+
+    if not jobs:
+        return {
+            "period": {"start": start, "end": end, "range_type": range_type},
+            "sold": {
+                "revenue": 0,
+                "profit": 0,
+                "gp_percent": 0,
+                "job_count": 0,
+                "ro_count": 0,
+                "billed_hours": 0,
+                "avg_job_value": 0
+            },
+            "breakdown": {
+                "parts": 0,
+                "labor": 0,
+                "sublet": 0,
+                "fees": 0
+            },
+            "source": "jobs",
+            "metric_type": "authorized_date",
+            "message": "No authorized jobs in this period"
+        }
+
+    # Aggregate metrics
+    parts_total = sum(j.get("parts_total") or 0 for j in jobs)
+    labor_total = sum(j.get("labor_total") or 0 for j in jobs)
+    sublet_total = sum(j.get("sublet_total") or 0 for j in jobs)
+    fees_total = sum(j.get("fees_total") or 0 for j in jobs)
+    labor_hours = sum(float(j.get("labor_hours") or 0) for j in jobs)
+
+    # Revenue = parts + labor + sublet (NOT fees, NOT tax)
+    sold_revenue = parts_total + labor_total + sublet_total
+
+    # Profit from TM (if available)
+    sold_profit = sum(j.get("gross_profit_amount") or 0 for j in jobs)
+
+    # Count unique ROs
+    unique_ros = set(j.get("repair_order_id") for j in jobs if j.get("repair_order_id"))
+    job_count = len(jobs)
+    ro_count = len(unique_ros)
+
+    # Calculate derived metrics
+    gp_percent = safe_div(sold_profit * 100, sold_revenue)
+    avg_job_value = safe_div(sold_revenue, job_count)
+
+    return {
+        "period": {"start": start, "end": end, "range_type": range_type},
+        "sold": {
+            "revenue": cents_to_dollars(sold_revenue),
+            "profit": cents_to_dollars(sold_profit),
+            "gp_percent": round(gp_percent, 2),
+            "job_count": job_count,
+            "ro_count": ro_count,
+            "billed_hours": round(labor_hours, 1),
+            "avg_job_value": cents_to_dollars(int(avg_job_value))
+        },
+        "breakdown": {
+            "parts": cents_to_dollars(parts_total),
+            "labor": cents_to_dollars(labor_total),
+            "sublet": cents_to_dollars(sublet_total),
+            "fees": cents_to_dollars(fees_total)
+        },
+        "source": "jobs",
+        "metric_type": "authorized_date",
+        "description": "Revenue authorized (sold) during this period - when customers approved the work"
+    }
+
+
+@router.get("/sold/daily")
+async def get_sold_daily(
+    shop_id: int = Query(default=6212, description="TM Shop ID"),
+    range_type: DateRange = Query(default=DateRange.LAST_7, description="Date range preset"),
+    start_date: Optional[str] = Query(default=None, description="Custom start (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(default=None, description="Custom end (YYYY-MM-DD)")
+):
+    """
+    Daily SOLD (Authorized) breakdown for trend charts.
+    Shows what was sold each day based on job authorization dates.
+    """
+    supabase = get_supabase()
+    shop_uuid = get_shop_uuid(supabase, shop_id)
+
+    start, end = resolve_date_range(range_type, start_date, end_date)
+
+    result = supabase.table("jobs").select(
+        "authorized_date, parts_total, labor_total, sublet_total, "
+        "labor_hours, gross_profit_amount, repair_order_id"
+    ).eq("shop_id", shop_uuid).eq("authorized", True).gte(
+        "authorized_date", f"{start}T00:00:00Z"
+    ).lte(
+        "authorized_date", f"{end}T23:59:59Z"
+    ).execute()
+
+    jobs = result.data or []
+
+    # Group by date
+    daily_data: Dict[str, Dict] = {}
+    for j in jobs:
+        auth_date = j.get("authorized_date")
+        if not auth_date:
+            continue
+
+        day = auth_date.split("T")[0] if "T" in auth_date else auth_date[:10]
+
+        if day not in daily_data:
+            daily_data[day] = {
+                "date": day, "parts": 0, "labor": 0, "sublet": 0,
+                "hours": 0, "profit": 0, "job_count": 0, "ro_ids": set()
+            }
+
+        daily_data[day]["parts"] += j.get("parts_total") or 0
+        daily_data[day]["labor"] += j.get("labor_total") or 0
+        daily_data[day]["sublet"] += j.get("sublet_total") or 0
+        daily_data[day]["hours"] += float(j.get("labor_hours") or 0)
+        daily_data[day]["profit"] += j.get("gross_profit_amount") or 0
+        daily_data[day]["job_count"] += 1
+        if j.get("repair_order_id"):
+            daily_data[day]["ro_ids"].add(j["repair_order_id"])
+
+    daily_list = []
+    for day, data in sorted(daily_data.items()):
+        revenue = data["parts"] + data["labor"] + data["sublet"]
+        profit = data["profit"]
+        daily_list.append({
+            "date": day,
+            "revenue": cents_to_dollars(revenue),
+            "profit": cents_to_dollars(profit),
+            "gp_percent": round(safe_div(profit * 100, revenue), 2),
+            "job_count": data["job_count"],
+            "ro_count": len(data["ro_ids"]),
+            "billed_hours": round(data["hours"], 1)
+        })
+
+    return {
+        "period": {"start": start, "end": end, "range_type": range_type},
+        "daily": daily_list,
+        "count": len(daily_list),
+        "source": "jobs",
+        "metric_type": "authorized_date"
+    }
+
+
+@router.get("/sold/compare")
+async def get_sold_vs_posted(
+    shop_id: int = Query(default=6212, description="TM Shop ID"),
+    range_type: DateRange = Query(default=DateRange.MTD, description="Date range preset"),
+    start_date: Optional[str] = Query(default=None, description="Custom start (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(default=None, description="Custom end (YYYY-MM-DD)")
+):
+    """
+    Compare SOLD vs POSTED revenue for the period.
+
+    Shows:
+    - SOLD: What was authorized (customer approved)
+    - POSTED: What was invoiced/closed
+    - Delta: SOLD - POSTED (positive = building backlog, negative = clearing backlog)
+    """
+    supabase = get_supabase()
+    shop_uuid = get_shop_uuid(supabase, shop_id)
+
+    start, end = resolve_date_range(range_type, start_date, end_date)
+
+    # Get SOLD (from jobs by authorized_date)
+    sold_result = supabase.table("jobs").select(
+        "parts_total, labor_total, sublet_total, gross_profit_amount, repair_order_id"
+    ).eq("shop_id", shop_uuid).eq("authorized", True).gte(
+        "authorized_date", f"{start}T00:00:00Z"
+    ).lte(
+        "authorized_date", f"{end}T23:59:59Z"
+    ).execute()
+
+    sold_jobs = sold_result.data or []
+    sold_revenue = sum(
+        (j.get("parts_total") or 0) + (j.get("labor_total") or 0) + (j.get("sublet_total") or 0)
+        for j in sold_jobs
+    )
+    sold_profit = sum(j.get("gross_profit_amount") or 0 for j in sold_jobs)
+    sold_ro_count = len(set(j.get("repair_order_id") for j in sold_jobs if j.get("repair_order_id")))
+    sold_job_count = len(sold_jobs)
+
+    # Get POSTED (from daily_shop_metrics by posted_date)
+    posted_result = supabase.table("daily_shop_metrics").select(
+        "authorized_revenue, authorized_profit, ro_count"
+    ).eq("shop_id", shop_uuid).gte("metric_date", start).lte("metric_date", end).execute()
+
+    posted_rows = posted_result.data or []
+    posted_revenue = sum(r.get("authorized_revenue") or 0 for r in posted_rows)
+    posted_profit = sum(r.get("authorized_profit") or 0 for r in posted_rows)
+    posted_ro_count = sum(r.get("ro_count") or 0 for r in posted_rows)
+
+    revenue_delta = sold_revenue - posted_revenue
+    profit_delta = sold_profit - posted_profit
+
+    return {
+        "period": {"start": start, "end": end, "range_type": range_type},
+        "sold": {
+            "revenue": cents_to_dollars(sold_revenue),
+            "profit": cents_to_dollars(sold_profit),
+            "gp_percent": round(safe_div(sold_profit * 100, sold_revenue), 2),
+            "job_count": sold_job_count,
+            "ro_count": sold_ro_count,
+            "source": "jobs.authorized_date"
+        },
+        "posted": {
+            "revenue": cents_to_dollars(posted_revenue),
+            "profit": cents_to_dollars(posted_profit),
+            "gp_percent": round(safe_div(posted_profit * 100, posted_revenue), 2),
+            "ro_count": posted_ro_count,
+            "source": "daily_shop_metrics.posted_date"
+        },
+        "delta": {
+            "revenue": cents_to_dollars(revenue_delta),
+            "profit": cents_to_dollars(profit_delta),
+            "interpretation": (
+                "Building backlog (sold > posted)" if revenue_delta > 0
+                else "Clearing backlog (posted > sold)" if revenue_delta < 0
+                else "Balanced"
+            )
+        }
+    }
