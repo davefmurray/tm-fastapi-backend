@@ -799,7 +799,7 @@ class WarehouseClient:
             if emp_result.data and emp_result.data[0].get("hourly_rate"):
                 hourly_rate = emp_result.data[0]["hourly_rate"]  # Already in cents
                 data["tech_hourly_cost"] = hourly_rate
-                # Calculate: labor_cost = hours × hourly_rate (cents)
+                # Calculate: labor_cost = hours * hourly_rate (cents)
                 labor_cost = int(hours * hourly_rate) if hours else 0
                 data["labor_cost"] = labor_cost
                 data["rate_source"] = "employee_cache"
