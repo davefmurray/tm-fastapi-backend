@@ -776,12 +776,15 @@ class WarehouseClient:
             "last_synced_at": datetime.now(timezone.utc).isoformat(),
         }
 
-        # Add cost data from profit/labor endpoint if available
+        # Calculate labor cost from employee hourly_rate (cached from TM)
+        # This eliminates the need for /profit/labor API calls
+        hours = tm_data.get("hours", 0) or 0
+
         if profit_labor_data:
+            # Legacy path: use profit/labor data if provided
             job_tech = profit_labor_data.get("jobTechnician", {}) or {}
             data["tech_hourly_cost"] = self._to_cents(job_tech.get("hourlyRate"))
             data["labor_cost"] = self._to_cents(profit_labor_data.get("cost"))
-            # Determine rate source
             if job_tech.get("hourlyRate"):
                 if tech.get("id") and job_tech.get("hourlyRate"):
                     data["rate_source"] = "assigned"
@@ -789,6 +792,23 @@ class WarehouseClient:
                     data["rate_source"] = "shop_avg"
             else:
                 data["rate_source"] = "default"
+        elif tm_technician_id:
+            # New path: calculate from cached employee hourly_rate
+            emp_result = self.supabase.table("employees")                 .select("hourly_rate")                 .eq("shop_id", shop_uuid)                 .eq("tm_id", tm_technician_id)                 .limit(1)                 .execute()
+
+            if emp_result.data and emp_result.data[0].get("hourly_rate"):
+                hourly_rate = emp_result.data[0]["hourly_rate"]  # Already in cents
+                data["tech_hourly_cost"] = hourly_rate
+                # Calculate: labor_cost = hours × hourly_rate (cents)
+                labor_cost = int(hours * hourly_rate) if hours else 0
+                data["labor_cost"] = labor_cost
+                data["rate_source"] = "employee_cache"
+            else:
+                # No hourly rate found - leave cost fields null
+                data["rate_source"] = "unknown"
+        else:
+            # No technician assigned
+            data["rate_source"] = "unassigned"
 
         # Labor may not have TM ID - use explicit insert/update logic
         # (partial unique index doesn't work with ON CONFLICT column syntax)

@@ -596,18 +596,9 @@ async def _sync_single_ro(
         sync.stats.add_error("estimate", tm_ro_id, str(e))
         estimate = {"jobs": []}
 
-    # 5. Fetch profit/labor data for GP% calculations
-    profit_data = None
-    try:
-        profit_data = await sync.tm.get(f"/api/repair-order/{tm_ro_id}/profit/labor")
-        await sync.store_payload(
-            endpoint=f"/api/repair-order/{tm_ro_id}/profit/labor",
-            response=profit_data,
-            tm_entity_id=tm_ro_id
-        )
-    except Exception as e:
-        # profit/labor may not be available for all ROs
-        sync.stats.add_error("profit_labor", tm_ro_id, str(e))
+    # 5. Labor cost calculation now happens in warehouse_client using cached employee hourly_rate
+    # This eliminates the need for /profit/labor API calls (33% reduction in API calls per RO)
+    profit_data = None  # Labor costs calculated from employees.hourly_rate in upsert_job_labor
 
     # 6. Upsert RO
     ro_uuid, is_new = await sync.warehouse.upsert_repair_order(
