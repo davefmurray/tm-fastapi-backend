@@ -558,7 +558,9 @@ class WarehouseClient:
             "potential_parts_total": potential_parts,
             "potential_labor_total": potential_labor,
             "potential_sublet_total": potential_sublet,
-            "potential_fees_total": potential_fees,
+            # CRITICAL: Use RO-level feesTotal, not job-level feePrice
+            # TM applies fees (shop supplies, EPA) at RO level, not job level
+            "potential_fees_total": estimate_data.get("feesTotal", 0),
             "potential_tax": estimate_data.get("taxes", 0),
             "potential_discount": estimate_data.get("discountTotal", 0),
 
@@ -567,7 +569,9 @@ class WarehouseClient:
             "authorized_parts_total": authorized_parts,
             "authorized_labor_total": authorized_labor,
             "authorized_sublet_total": authorized_sublet,
-            "authorized_fees_total": authorized_fees,
+            # CRITICAL: Use RO-level feesTotal for authorized fees
+            # This is where shop supplies and EPA fees come from
+            "authorized_fees_total": estimate_data.get("feesTotal", 0) if authorized_job_count > 0 else 0,
             "authorized_tax": estimate_data.get("taxes", 0) if authorized_job_count > 0 else 0,
             "authorized_discount": estimate_data.get("discountTotal", 0) if authorized_job_count > 0 else 0,
 
