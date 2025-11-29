@@ -296,7 +296,7 @@ async def get_advisor_performance(
     # Aggregate by advisor
     advisor_data: Dict[str, Dict] = {}
     for r in rows:
-        name = r.get("advisor_name") or "Unknown"
+        name = r.get("service_advisor_id") or "Unknown"
         if name not in advisor_data:
             advisor_data[name] = {
                 "name": name,
@@ -313,7 +313,7 @@ async def get_advisor_performance(
         advisor_data[name]["ro_count"] += 1
         advisor_data[name]["revenue"] += r.get("authorized_revenue") or 0
         advisor_data[name]["profit"] += r.get("authorized_profit") or 0
-        advisor_data[name]["hours"] += float(r.get("labor_hours") or 0)
+        advisor_data[name]["hours"] += float(r.get("authorized_labor_hours") or 0)
         advisor_data[name]["parts_revenue"] += r.get("parts_revenue") or 0
         advisor_data[name]["parts_profit"] += r.get("parts_profit") or 0
         advisor_data[name]["labor_revenue"] += r.get("labor_revenue") or 0
@@ -336,8 +336,8 @@ async def get_advisor_performance(
             "aro": cents_to_dollars(int(safe_div(revenue, ro_count))),
             "billed_hours": round(hours, 1),
             "gp_per_hour": round(safe_div(profit, hours * 100), 2) if hours > 0 else 0,
-            "labor_revenue": cents_to_dollars(data["labor_revenue"]),
-            "parts_revenue": cents_to_dollars(data["parts_revenue"])
+            "labor_total": cents_to_dollars(data["labor_total"]),
+            "parts_total": cents_to_dollars(data["parts_total"])
         })
 
     # Sort by revenue descending
@@ -907,9 +907,9 @@ async def get_posted_summary(
         result = supabase.table("repair_orders").select(
             "id, ro_number, posted_date, status, "
             "authorized_revenue, authorized_discount, authorized_fees_total, "
-            "authorized_labor_revenue, authorized_parts_revenue, authorized_sublet_revenue, "
-            "authorized_cost, authorized_labor_cost, authorized_parts_cost, "
-            "labor_hours, customer_id, vehicle_id"
+            "authorized_labor_total, authorized_parts_total, authorized_sublet_total, "
+            "authorized_cost, authorized_profit, "
+            "authorized_labor_hours, customer_id, vehicle_id"
         ).eq("shop_id", shop_uuid).gte(
             "posted_date", start
         ).lte(
@@ -952,24 +952,22 @@ async def get_posted_summary(
     total_discount = sum(r.get("authorized_discount") or 0 for r in ros)
     total_fees = sum(r.get("authorized_fees_total") or 0 for r in ros)
     total_cost = sum(r.get("authorized_cost") or 0 for r in ros)
-    total_hours = sum(float(r.get("labor_hours") or 0) for r in ros)
+    total_hours = sum(float(r.get("authorized_labor_hours") or 0) for r in ros)
 
     # Correct revenue formula: revenue - discount + fees
     total_revenue = total_revenue_before_discount - total_discount + total_fees
     total_profit = total_revenue - total_cost
 
-    # Breakdown by category
-    labor_revenue = sum(r.get("authorized_labor_revenue") or 0 for r in ros)
-    labor_cost = sum(r.get("authorized_labor_cost") or 0 for r in ros)
-    parts_revenue = sum(r.get("authorized_parts_revenue") or 0 for r in ros)
-    parts_cost = sum(r.get("authorized_parts_cost") or 0 for r in ros)
-    sublet_revenue = sum(r.get("authorized_sublet_revenue") or 0 for r in ros)
+    # Breakdown by category (using correct column names from schema)
+    labor_total = sum(r.get("authorized_labor_total") or 0 for r in ros)
+    parts_total = sum(r.get("authorized_parts_total") or 0 for r in ros)
+    sublet_total = sum(r.get("authorized_sublet_total") or 0 for r in ros)
 
     ro_count = len(ros)
     gp_percent = safe_div(total_profit * 100, total_revenue)
     aro = safe_div(total_revenue, ro_count)
     gp_per_hour = safe_div(total_profit, total_hours * 100) if total_hours > 0 else 0
-    effective_labor_rate = safe_div(labor_revenue, total_hours * 100) if total_hours > 0 else 0
+    effective_labor_rate = safe_div(labor_total, total_hours * 100) if total_hours > 0 else 0
 
     return {
         "period": {"start": start, "end": end, "range_type": range_type},
@@ -987,19 +985,9 @@ async def get_posted_summary(
             "effective_labor_rate": round(effective_labor_rate, 2)
         },
         "breakdown": {
-            "labor": {
-                "revenue": cents_to_dollars(labor_revenue),
-                "cost": cents_to_dollars(labor_cost),
-                "profit": cents_to_dollars(labor_revenue - labor_cost),
-                "gp_percent": round(safe_div((labor_revenue - labor_cost) * 100, labor_revenue), 2)
-            },
-            "parts": {
-                "revenue": cents_to_dollars(parts_revenue),
-                "cost": cents_to_dollars(parts_cost),
-                "profit": cents_to_dollars(parts_revenue - parts_cost),
-                "gp_percent": round(safe_div((parts_revenue - parts_cost) * 100, parts_revenue), 2)
-            },
-            "sublet": cents_to_dollars(sublet_revenue)
+            "labor": cents_to_dollars(labor_total),
+            "parts": cents_to_dollars(parts_total),
+            "sublet": cents_to_dollars(sublet_total)
         },
         "source": "repair_orders.posted_date",
         "formula": "authorized_revenue - authorized_discount + authorized_fees_total",
@@ -1031,7 +1019,7 @@ async def get_posted_daily(
     while True:
         result = supabase.table("repair_orders").select(
             "posted_date, authorized_revenue, authorized_discount, authorized_fees_total, "
-            "authorized_cost, labor_hours"
+            "authorized_cost, authorized_labor_hours"
         ).eq("shop_id", shop_uuid).gte(
             "posted_date", start
         ).lte(
@@ -1062,7 +1050,7 @@ async def get_posted_daily(
         daily_data[day]["discount"] += r.get("authorized_discount") or 0
         daily_data[day]["fees"] += r.get("authorized_fees_total") or 0
         daily_data[day]["cost"] += r.get("authorized_cost") or 0
-        daily_data[day]["hours"] += float(r.get("labor_hours") or 0)
+        daily_data[day]["hours"] += float(r.get("authorized_labor_hours") or 0)
         daily_data[day]["ro_count"] += 1
 
     daily_list = []
@@ -1111,8 +1099,8 @@ async def get_posted_by_advisor(
 
     while True:
         result = supabase.table("repair_orders").select(
-            "advisor_name, authorized_revenue, authorized_discount, authorized_fees_total, "
-            "authorized_cost, labor_hours, authorized_labor_revenue, authorized_parts_revenue"
+            "service_advisor_id, authorized_revenue, authorized_discount, authorized_fees_total, "
+            "authorized_cost, authorized_labor_hours, authorized_labor_total, authorized_parts_total"
         ).eq("shop_id", shop_uuid).gte(
             "posted_date", start
         ).lte(
@@ -1129,22 +1117,22 @@ async def get_posted_by_advisor(
     # Aggregate by advisor
     advisor_data: Dict[str, Dict] = {}
     for r in ros:
-        name = r.get("advisor_name") or "Unknown"
+        name = r.get("service_advisor_id") or "Unknown"
         if name not in advisor_data:
             advisor_data[name] = {
                 "name": name, "revenue_before_discount": 0, "discount": 0,
                 "fees": 0, "cost": 0, "hours": 0, "ro_count": 0,
-                "labor_revenue": 0, "parts_revenue": 0
+                "labor_total": 0, "parts_total": 0
             }
 
         advisor_data[name]["revenue_before_discount"] += r.get("authorized_revenue") or 0
         advisor_data[name]["discount"] += r.get("authorized_discount") or 0
         advisor_data[name]["fees"] += r.get("authorized_fees_total") or 0
         advisor_data[name]["cost"] += r.get("authorized_cost") or 0
-        advisor_data[name]["hours"] += float(r.get("labor_hours") or 0)
+        advisor_data[name]["hours"] += float(r.get("authorized_labor_hours") or 0)
         advisor_data[name]["ro_count"] += 1
-        advisor_data[name]["labor_revenue"] += r.get("authorized_labor_revenue") or 0
-        advisor_data[name]["parts_revenue"] += r.get("authorized_parts_revenue") or 0
+        advisor_data[name]["labor_total"] += r.get("authorized_labor_total") or 0
+        advisor_data[name]["parts_total"] += r.get("authorized_parts_total") or 0
 
     advisors = []
     for name, data in advisor_data.items():
@@ -1159,8 +1147,8 @@ async def get_posted_by_advisor(
             "aro": cents_to_dollars(int(safe_div(revenue, data["ro_count"]))),
             "billed_hours": round(data["hours"], 1),
             "gp_per_hour": round(safe_div(profit, data["hours"] * 100), 2) if data["hours"] > 0 else 0,
-            "labor_revenue": cents_to_dollars(data["labor_revenue"]),
-            "parts_revenue": cents_to_dollars(data["parts_revenue"])
+            "labor_total": cents_to_dollars(data["labor_total"]),
+            "parts_total": cents_to_dollars(data["parts_total"])
         })
 
     advisors.sort(key=lambda x: x["revenue"], reverse=True)
