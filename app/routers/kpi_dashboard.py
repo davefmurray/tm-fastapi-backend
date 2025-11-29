@@ -820,15 +820,32 @@ async def get_sold_vs_posted(
     sold_ro_count = len(set(j.get("repair_order_id") for j in sold_jobs if j.get("repair_order_id")))
     sold_job_count = len(sold_jobs)
 
-    # Get POSTED (from daily_shop_metrics by posted_date)
-    posted_result = supabase.table("daily_shop_metrics").select(
-        "authorized_revenue, authorized_profit, ro_count"
-    ).eq("shop_id", shop_uuid).gte("metric_date", start).lte("metric_date", end).limit(10000).execute()
+    # Get POSTED (from repair_orders by posted_date with correct formula)
+    posted_ros = []
+    posted_offset = 0
+    while True:
+        posted_result = supabase.table("repair_orders").select(
+            "authorized_revenue, authorized_discount, authorized_fees_total, authorized_cost"
+        ).eq("shop_id", shop_uuid).gte(
+            "posted_date", start
+        ).lte(
+            "posted_date", end
+        ).in_("status", ["POSTED", "COMPLETED"]).range(posted_offset, posted_offset + page_size - 1).execute()
 
-    posted_rows = posted_result.data or []
-    posted_revenue = sum(r.get("authorized_revenue") or 0 for r in posted_rows)
-    posted_profit = sum(r.get("authorized_profit") or 0 for r in posted_rows)
-    posted_ro_count = sum(r.get("ro_count") or 0 for r in posted_rows)
+        batch = posted_result.data or []
+        posted_ros.extend(batch)
+        if len(batch) < page_size:
+            break
+        posted_offset += page_size
+
+    # Apply correct formula: revenue - discount + fees
+    posted_revenue_before_discount = sum(r.get("authorized_revenue") or 0 for r in posted_ros)
+    posted_discount = sum(r.get("authorized_discount") or 0 for r in posted_ros)
+    posted_fees = sum(r.get("authorized_fees_total") or 0 for r in posted_ros)
+    posted_cost = sum(r.get("authorized_cost") or 0 for r in posted_ros)
+    posted_revenue = posted_revenue_before_discount - posted_discount + posted_fees
+    posted_profit = posted_revenue - posted_cost
+    posted_ro_count = len(posted_ros)
 
     revenue_delta = sold_revenue - posted_revenue
     profit_delta = sold_profit - posted_profit
@@ -848,7 +865,7 @@ async def get_sold_vs_posted(
             "profit": cents_to_dollars(posted_profit),
             "gp_percent": round(safe_div(posted_profit * 100, posted_revenue), 2),
             "ro_count": posted_ro_count,
-            "source": "daily_shop_metrics.posted_date"
+            "source": "repair_orders.posted_date", "formula": "revenue - discount + fees"
         },
         "delta": {
             "revenue": cents_to_dollars(revenue_delta),
@@ -859,4 +876,299 @@ async def get_sold_vs_posted(
                 else "Balanced"
             )
         }
+    }
+
+@router.get("/posted")
+async def get_posted_summary(
+    shop_id: int = Query(default=6212, description="TM Shop ID"),
+    range_type: DateRange = Query(default=DateRange.MTD, description="Date range preset"),
+    start_date: Optional[str] = Query(default=None, description="Custom start (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(default=None, description="Custom end (YYYY-MM-DD)")
+):
+    """
+    POSTED (Invoiced) Revenue - What was CLOSED/INVOICED in the period.
+
+    Uses repair_orders table with posted_date filter.
+    Formula: authorized_revenue - authorized_discount + authorized_fees_total
+
+    This is the ACTUAL cash-out amount matching TM's Posted Sales report.
+    """
+    supabase = get_supabase()
+    shop_uuid = get_shop_uuid(supabase, shop_id)
+
+    start, end = resolve_date_range(range_type, start_date, end_date)
+
+    # Query repair_orders directly using posted_date
+    ros = []
+    page_size = 1000
+    offset = 0
+
+    while True:
+        result = supabase.table("repair_orders").select(
+            "id, ro_number, posted_date, status, "
+            "authorized_revenue, authorized_discount, authorized_fees_total, "
+            "authorized_labor_revenue, authorized_parts_revenue, authorized_sublet_revenue, "
+            "authorized_cost, authorized_labor_cost, authorized_parts_cost, "
+            "labor_hours, customer_id, vehicle_id"
+        ).eq("shop_id", shop_uuid).gte(
+            "posted_date", start
+        ).lte(
+            "posted_date", end
+        ).in_("status", ["POSTED", "COMPLETED"]).range(offset, offset + page_size - 1).execute()
+
+        batch = result.data or []
+        ros.extend(batch)
+
+        if len(batch) < page_size:
+            break
+        offset += page_size
+
+    if not ros:
+        return {
+            "period": {"start": start, "end": end, "range_type": range_type},
+            "posted": {
+                "revenue": 0,
+                "revenue_before_discount": 0,
+                "discount": 0,
+                "fees": 0,
+                "profit": 0,
+                "gp_percent": 0,
+                "ro_count": 0,
+                "billed_hours": 0,
+                "aro": 0
+            },
+            "breakdown": {
+                "labor": {"revenue": 0, "cost": 0, "profit": 0},
+                "parts": {"revenue": 0, "cost": 0, "profit": 0},
+                "sublet": 0
+            },
+            "source": "repair_orders.posted_date",
+            "formula": "authorized_revenue - authorized_discount + authorized_fees_total",
+            "message": "No posted ROs in this period"
+        }
+
+    # Aggregate using correct formula
+    total_revenue_before_discount = sum(r.get("authorized_revenue") or 0 for r in ros)
+    total_discount = sum(r.get("authorized_discount") or 0 for r in ros)
+    total_fees = sum(r.get("authorized_fees_total") or 0 for r in ros)
+    total_cost = sum(r.get("authorized_cost") or 0 for r in ros)
+    total_hours = sum(float(r.get("labor_hours") or 0) for r in ros)
+
+    # Correct revenue formula: revenue - discount + fees
+    total_revenue = total_revenue_before_discount - total_discount + total_fees
+    total_profit = total_revenue - total_cost
+
+    # Breakdown by category
+    labor_revenue = sum(r.get("authorized_labor_revenue") or 0 for r in ros)
+    labor_cost = sum(r.get("authorized_labor_cost") or 0 for r in ros)
+    parts_revenue = sum(r.get("authorized_parts_revenue") or 0 for r in ros)
+    parts_cost = sum(r.get("authorized_parts_cost") or 0 for r in ros)
+    sublet_revenue = sum(r.get("authorized_sublet_revenue") or 0 for r in ros)
+
+    ro_count = len(ros)
+    gp_percent = safe_div(total_profit * 100, total_revenue)
+    aro = safe_div(total_revenue, ro_count)
+    gp_per_hour = safe_div(total_profit, total_hours * 100) if total_hours > 0 else 0
+    effective_labor_rate = safe_div(labor_revenue, total_hours * 100) if total_hours > 0 else 0
+
+    return {
+        "period": {"start": start, "end": end, "range_type": range_type},
+        "posted": {
+            "revenue": cents_to_dollars(total_revenue),
+            "revenue_before_discount": cents_to_dollars(total_revenue_before_discount),
+            "discount": cents_to_dollars(total_discount),
+            "fees": cents_to_dollars(total_fees),
+            "profit": cents_to_dollars(total_profit),
+            "gp_percent": round(gp_percent, 2),
+            "ro_count": ro_count,
+            "billed_hours": round(total_hours, 1),
+            "aro": cents_to_dollars(int(aro)),
+            "gp_per_hour": round(gp_per_hour, 2),
+            "effective_labor_rate": round(effective_labor_rate, 2)
+        },
+        "breakdown": {
+            "labor": {
+                "revenue": cents_to_dollars(labor_revenue),
+                "cost": cents_to_dollars(labor_cost),
+                "profit": cents_to_dollars(labor_revenue - labor_cost),
+                "gp_percent": round(safe_div((labor_revenue - labor_cost) * 100, labor_revenue), 2)
+            },
+            "parts": {
+                "revenue": cents_to_dollars(parts_revenue),
+                "cost": cents_to_dollars(parts_cost),
+                "profit": cents_to_dollars(parts_revenue - parts_cost),
+                "gp_percent": round(safe_div((parts_revenue - parts_cost) * 100, parts_revenue), 2)
+            },
+            "sublet": cents_to_dollars(sublet_revenue)
+        },
+        "source": "repair_orders.posted_date",
+        "formula": "authorized_revenue - authorized_discount + authorized_fees_total",
+        "note": "This should match TM's Posted Sales report exactly"
+    }
+
+
+@router.get("/posted/daily")
+async def get_posted_daily(
+    shop_id: int = Query(default=6212, description="TM Shop ID"),
+    range_type: DateRange = Query(default=DateRange.LAST_7, description="Date range preset"),
+    start_date: Optional[str] = Query(default=None, description="Custom start (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(default=None, description="Custom end (YYYY-MM-DD)")
+):
+    """
+    Daily POSTED breakdown for trend charts.
+    Uses repair_orders.posted_date with correct discount formula.
+    """
+    supabase = get_supabase()
+    shop_uuid = get_shop_uuid(supabase, shop_id)
+
+    start, end = resolve_date_range(range_type, start_date, end_date)
+
+    # Paginate repair_orders by posted_date
+    ros = []
+    page_size = 1000
+    offset = 0
+
+    while True:
+        result = supabase.table("repair_orders").select(
+            "posted_date, authorized_revenue, authorized_discount, authorized_fees_total, "
+            "authorized_cost, labor_hours"
+        ).eq("shop_id", shop_uuid).gte(
+            "posted_date", start
+        ).lte(
+            "posted_date", end
+        ).in_("status", ["POSTED", "COMPLETED"]).range(offset, offset + page_size - 1).execute()
+
+        batch = result.data or []
+        ros.extend(batch)
+
+        if len(batch) < page_size:
+            break
+        offset += page_size
+
+    # Group by posted_date
+    daily_data: Dict[str, Dict] = {}
+    for r in ros:
+        day = r.get("posted_date")
+        if not day:
+            continue
+
+        if day not in daily_data:
+            daily_data[day] = {
+                "date": day, "revenue_before_discount": 0, "discount": 0,
+                "fees": 0, "cost": 0, "hours": 0, "ro_count": 0
+            }
+
+        daily_data[day]["revenue_before_discount"] += r.get("authorized_revenue") or 0
+        daily_data[day]["discount"] += r.get("authorized_discount") or 0
+        daily_data[day]["fees"] += r.get("authorized_fees_total") or 0
+        daily_data[day]["cost"] += r.get("authorized_cost") or 0
+        daily_data[day]["hours"] += float(r.get("labor_hours") or 0)
+        daily_data[day]["ro_count"] += 1
+
+    daily_list = []
+    for day, data in sorted(daily_data.items()):
+        revenue = data["revenue_before_discount"] - data["discount"] + data["fees"]
+        profit = revenue - data["cost"]
+        daily_list.append({
+            "date": day,
+            "revenue": cents_to_dollars(revenue),
+            "profit": cents_to_dollars(profit),
+            "gp_percent": round(safe_div(profit * 100, revenue), 2),
+            "ro_count": data["ro_count"],
+            "billed_hours": round(data["hours"], 1),
+            "aro": cents_to_dollars(int(safe_div(revenue, data["ro_count"])))
+        })
+
+    return {
+        "period": {"start": start, "end": end, "range_type": range_type},
+        "daily": daily_list,
+        "count": len(daily_list),
+        "source": "repair_orders.posted_date",
+        "formula": "authorized_revenue - authorized_discount + authorized_fees_total"
+    }
+
+
+@router.get("/posted/advisors")
+async def get_posted_by_advisor(
+    shop_id: int = Query(default=6212, description="TM Shop ID"),
+    range_type: DateRange = Query(default=DateRange.MTD, description="Date range preset"),
+    start_date: Optional[str] = Query(default=None, description="Custom start (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(default=None, description="Custom end (YYYY-MM-DD)")
+):
+    """
+    POSTED revenue by service advisor.
+    Uses repair_orders.posted_date with correct discount formula.
+    """
+    supabase = get_supabase()
+    shop_uuid = get_shop_uuid(supabase, shop_id)
+
+    start, end = resolve_date_range(range_type, start_date, end_date)
+
+    # Get posted ROs with advisor info
+    ros = []
+    page_size = 1000
+    offset = 0
+
+    while True:
+        result = supabase.table("repair_orders").select(
+            "advisor_name, authorized_revenue, authorized_discount, authorized_fees_total, "
+            "authorized_cost, labor_hours, authorized_labor_revenue, authorized_parts_revenue"
+        ).eq("shop_id", shop_uuid).gte(
+            "posted_date", start
+        ).lte(
+            "posted_date", end
+        ).in_("status", ["POSTED", "COMPLETED"]).range(offset, offset + page_size - 1).execute()
+
+        batch = result.data or []
+        ros.extend(batch)
+
+        if len(batch) < page_size:
+            break
+        offset += page_size
+
+    # Aggregate by advisor
+    advisor_data: Dict[str, Dict] = {}
+    for r in ros:
+        name = r.get("advisor_name") or "Unknown"
+        if name not in advisor_data:
+            advisor_data[name] = {
+                "name": name, "revenue_before_discount": 0, "discount": 0,
+                "fees": 0, "cost": 0, "hours": 0, "ro_count": 0,
+                "labor_revenue": 0, "parts_revenue": 0
+            }
+
+        advisor_data[name]["revenue_before_discount"] += r.get("authorized_revenue") or 0
+        advisor_data[name]["discount"] += r.get("authorized_discount") or 0
+        advisor_data[name]["fees"] += r.get("authorized_fees_total") or 0
+        advisor_data[name]["cost"] += r.get("authorized_cost") or 0
+        advisor_data[name]["hours"] += float(r.get("labor_hours") or 0)
+        advisor_data[name]["ro_count"] += 1
+        advisor_data[name]["labor_revenue"] += r.get("authorized_labor_revenue") or 0
+        advisor_data[name]["parts_revenue"] += r.get("authorized_parts_revenue") or 0
+
+    advisors = []
+    for name, data in advisor_data.items():
+        revenue = data["revenue_before_discount"] - data["discount"] + data["fees"]
+        profit = revenue - data["cost"]
+        advisors.append({
+            "name": name,
+            "ro_count": data["ro_count"],
+            "revenue": cents_to_dollars(revenue),
+            "profit": cents_to_dollars(profit),
+            "gp_percent": round(safe_div(profit * 100, revenue), 2),
+            "aro": cents_to_dollars(int(safe_div(revenue, data["ro_count"]))),
+            "billed_hours": round(data["hours"], 1),
+            "gp_per_hour": round(safe_div(profit, data["hours"] * 100), 2) if data["hours"] > 0 else 0,
+            "labor_revenue": cents_to_dollars(data["labor_revenue"]),
+            "parts_revenue": cents_to_dollars(data["parts_revenue"])
+        })
+
+    advisors.sort(key=lambda x: x["revenue"], reverse=True)
+
+    return {
+        "period": {"start": start, "end": end, "range_type": range_type},
+        "advisors": advisors,
+        "count": len(advisors),
+        "source": "repair_orders.posted_date",
+        "formula": "authorized_revenue - authorized_discount + authorized_fees_total"
     }
