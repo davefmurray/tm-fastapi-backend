@@ -37,7 +37,7 @@ def get_supabase() -> Client:
 
 def get_shop_uuid(supabase: Client, shop_id: int) -> str:
     """Get shop UUID from TM shop ID."""
-    result = supabase.table("shops").select("id").eq("tm_id", shop_id).execute()
+    result = supabase.table("shops").select("id").eq("tm_id", shop_id).limit(10000).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail=f"Shop {shop_id} not found")
     return result.data[0]["id"]
@@ -139,7 +139,7 @@ async def get_kpi_summary(
         "metric_date, ro_count, authorized_revenue, authorized_cost, authorized_profit, "
         "authorized_gp_percent, labor_hours, labor_revenue, labor_profit, "
         "parts_revenue, parts_profit, avg_ro_value, authorization_rate"
-    ).eq("shop_id", shop_uuid).gte("metric_date", start).lte("metric_date", end).execute()
+    ).eq("shop_id", shop_uuid).gte("metric_date", start).lte("metric_date", end).limit(10000).execute()
 
     rows = result.data or []
 
@@ -239,7 +239,7 @@ async def get_daily_breakdown(
         "shop_id", shop_uuid
     ).gte("metric_date", start).lte("metric_date", end).order(
         "metric_date", desc=False
-    ).execute()
+    ).limit(10000).execute()
 
     rows = result.data or []
 
@@ -289,7 +289,7 @@ async def get_advisor_performance(
     result = supabase.table("ro_snapshots").select(
         "advisor_name, authorized_revenue, authorized_profit, labor_hours, "
         "parts_revenue, parts_profit, labor_revenue, labor_profit"
-    ).eq("shop_id", shop_uuid).gte("snapshot_date", start).lte("snapshot_date", end).execute()
+    ).eq("shop_id", shop_uuid).gte("snapshot_date", start).lte("snapshot_date", end).limit(10000).execute()
 
     rows = result.data or []
 
@@ -371,7 +371,7 @@ async def get_tech_performance(
     # First get ro_snapshots to find qualifying RO IDs
     snapshots = supabase.table("ro_snapshots").select(
         "repair_order_id"
-    ).eq("shop_id", shop_uuid).gte("snapshot_date", start).lte("snapshot_date", end).execute()
+    ).eq("shop_id", shop_uuid).gte("snapshot_date", start).lte("snapshot_date", end).limit(10000).execute()
 
     ro_ids = [s["repair_order_id"] for s in (snapshots.data or [])]
 
@@ -387,7 +387,7 @@ async def get_tech_performance(
     # Note: Supabase doesn't support IN queries easily, so we'll fetch all and filter
     labor_result = supabase.table("job_labor").select(
         "technician_name, hours, total, labor_cost, repair_order_id"
-    ).eq("shop_id", shop_uuid).execute()
+    ).eq("shop_id", shop_uuid).limit(10000).execute()
 
     labor_rows = [r for r in (labor_result.data or []) if r.get("repair_order_id") in ro_ids]
 
@@ -527,7 +527,7 @@ async def get_warranty_view(
     result = supabase.table("ro_snapshots").select(
         "ro_number, snapshot_date, customer_name, vehicle_description, advisor_name, "
         "authorized_revenue, authorized_profit, authorized_gp_percent, labor_hours"
-    ).eq("shop_id", shop_uuid).gte("snapshot_date", start).lte("snapshot_date", end).execute()
+    ).eq("shop_id", shop_uuid).gte("snapshot_date", start).lte("snapshot_date", end).limit(10000).execute()
 
     rows = result.data or []
 
@@ -603,7 +603,7 @@ async def get_sold_summary(
         "authorized_date", f"{start}T00:00:00Z"
     ).lte(
         "authorized_date", f"{end}T23:59:59Z"
-    ).execute()
+    ).limit(10000).execute()
 
     jobs = result.data or []
 
@@ -698,7 +698,7 @@ async def get_sold_daily(
         "authorized_date", f"{start}T00:00:00Z"
     ).lte(
         "authorized_date", f"{end}T23:59:59Z"
-    ).execute()
+    ).limit(10000).execute()
 
     jobs = result.data or []
 
@@ -776,7 +776,7 @@ async def get_sold_vs_posted(
         "authorized_date", f"{start}T00:00:00Z"
     ).lte(
         "authorized_date", f"{end}T23:59:59Z"
-    ).execute()
+    ).limit(10000).execute()
 
     sold_jobs = sold_result.data or []
     sold_revenue = sum(
@@ -790,7 +790,7 @@ async def get_sold_vs_posted(
     # Get POSTED (from daily_shop_metrics by posted_date)
     posted_result = supabase.table("daily_shop_metrics").select(
         "authorized_revenue, authorized_profit, ro_count"
-    ).eq("shop_id", shop_uuid).gte("metric_date", start).lte("metric_date", end).execute()
+    ).eq("shop_id", shop_uuid).gte("metric_date", start).lte("metric_date", end).limit(10000).execute()
 
     posted_rows = posted_result.data or []
     posted_revenue = sum(r.get("authorized_revenue") or 0 for r in posted_rows)
